@@ -10,6 +10,12 @@ categories.workspace = true
 readme.workspace = true
 
 [dependencies]
+scraper.workspace = true
+thiserror.workspace = true
+ego-tree.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
 
 [lints]
 workspace = true

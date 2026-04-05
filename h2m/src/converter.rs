@@ -1,0 +1,404 @@
+//! Core converter: builder, frozen converter, and traversal pipeline.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use ego_tree::NodeId;
+use scraper::node::Node;
+use scraper::{ElementRef, Html};
+
+use crate::context::{ConversionContext, ListMetadata};
+use crate::escape::{self, EscapeContext};
+use crate::options::Options;
+use crate::plugin::Plugin;
+use crate::result::AdvancedResult;
+use crate::rule::{Rule, RuleAction};
+use crate::whitespace;
+
+// ── Builder ──────────────────────────────────────────────────────────────
+
+/// Builder for constructing a [`Converter`] with custom rules and options.
+#[derive(Default)]
+#[allow(clippy::module_name_repetitions)]
+pub struct ConverterBuilder {
+    /// Conversion options.
+    options: Options,
+    /// Registered rules, keyed by tag name.
+    rules: HashMap<&'static str, Vec<Arc<dyn Rule>>>,
+    /// Tags whose raw HTML should be preserved in the output.
+    keep_tags: Vec<String>,
+    /// Tags (and their content) to remove entirely from the output.
+    remove_tags: Vec<String>,
+}
+
+impl std::fmt::Debug for ConverterBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConverterBuilder")
+            .field("options", &self.options)
+            .field(
+                "rule_count",
+                &self.rules.values().map(Vec::len).sum::<usize>(),
+            )
+            .field("keep_tags", &self.keep_tags)
+            .field("remove_tags", &self.remove_tags)
+            .finish()
+    }
+}
+
+impl ConverterBuilder {
+    /// Creates a new builder with default options.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the conversion options.
+    #[must_use]
+    pub const fn options(mut self, opts: Options) -> Self {
+        self.options = opts;
+        self
+    }
+
+    /// Registers a conversion rule.
+    ///
+    /// Rules registered later take priority over earlier rules for the same
+    /// tag.
+    pub fn add_rule_boxed(&mut self, rule: Box<dyn Rule>) {
+        let arc: Arc<dyn Rule> = Arc::from(rule);
+        for &tag in arc.tags() {
+            self.rules.entry(tag).or_default().push(Arc::clone(&arc));
+        }
+    }
+
+    /// Applies a plugin, which may register rules and hooks.
+    #[must_use]
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn use_plugin(mut self, plugin: impl Plugin) -> Self {
+        plugin.register(&mut self);
+        self
+    }
+
+    /// Adds tags whose raw HTML should be kept in the output.
+    #[must_use]
+    pub fn keep(mut self, tags: &[&str]) -> Self {
+        self.keep_tags.extend(tags.iter().map(|&s| s.to_owned()));
+        self
+    }
+
+    /// Adds tags (and their content) to remove from the output.
+    #[must_use]
+    pub fn remove(mut self, tags: &[&str]) -> Self {
+        self.remove_tags.extend(tags.iter().map(|&s| s.to_owned()));
+        self
+    }
+
+    /// Builds the frozen [`Converter`].
+    #[must_use]
+    pub fn build(self) -> Converter {
+        Converter {
+            options: self.options,
+            rules: self.rules,
+            keep_tags: self.keep_tags,
+            remove_tags: self.remove_tags,
+        }
+    }
+}
+
+// ── Converter ────────────────────────────────────────────────────────────
+
+/// A frozen, reusable HTML-to-Markdown converter.
+///
+/// Construct via [`Converter::builder()`] or the convenience
+/// [`crate::convert()`] function.
+pub struct Converter {
+    /// Conversion options.
+    options: Options,
+    /// Rules keyed by tag name, tried in reverse order.
+    rules: HashMap<&'static str, Vec<Arc<dyn Rule>>>,
+    /// Tags to preserve as raw HTML.
+    keep_tags: Vec<String>,
+    /// Tags to remove entirely.
+    remove_tags: Vec<String>,
+}
+
+impl std::fmt::Debug for Converter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Converter")
+            .field("options", &self.options)
+            .field(
+                "rule_count",
+                &self.rules.values().map(Vec::len).sum::<usize>(),
+            )
+            .field("keep_tags", &self.keep_tags)
+            .field("remove_tags", &self.remove_tags)
+            .finish()
+    }
+}
+
+impl Converter {
+    /// Returns a new [`ConverterBuilder`].
+    #[must_use]
+    pub fn builder() -> ConverterBuilder {
+        ConverterBuilder::new()
+    }
+
+    /// Converts an HTML string to Markdown.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if I/O fails during reading (when using reader-based
+    /// APIs). Direct string conversion is infallible at the parsing level since
+    /// html5ever recovers from malformed HTML.
+    pub fn convert(&self, html: &str) -> crate::Result<String> {
+        let document = Html::parse_document(html);
+        let mut ctx = ConversionContext::new(self.options.clone());
+
+        // Pre-pass: compute list metadata.
+        self.annotate_lists(&document, &mut ctx);
+
+        // Traverse from the root element (<html>).
+        let root_id = document.root_element().id();
+        let result = self.process_node(root_id, &document, &mut ctx);
+
+        // Assemble final output.
+        let mut output = String::with_capacity(
+            result.header.len() + result.markdown.len() + result.footer.len() + 4,
+        );
+        if !result.header.is_empty() {
+            output.push_str(&result.header);
+            output.push_str("\n\n");
+        }
+        output.push_str(&result.markdown);
+        if !ctx.footers.is_empty() {
+            output.push_str("\n\n");
+            output.push_str(&ctx.footers.join("\n"));
+        }
+        if !result.footer.is_empty() {
+            output.push_str("\n\n");
+            output.push_str(&result.footer);
+        }
+
+        Ok(whitespace::clean_output(&output))
+    }
+
+    /// Converts HTML read from a reader to Markdown.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading from the reader fails.
+    pub fn convert_reader(&self, mut reader: impl std::io::Read) -> crate::Result<String> {
+        let mut html = String::new();
+        reader.read_to_string(&mut html)?;
+        self.convert(&html)
+    }
+
+    // ── List pre-pass ────────────────────────────────────────────────────
+
+    /// Walks the DOM to compute [`ListMetadata`] for every `<li>` element.
+    fn annotate_lists(&self, document: &Html, ctx: &mut ConversionContext) {
+        Self::annotate_list_node(
+            &self.options,
+            document.root_element().id(),
+            document,
+            ctx,
+            0,
+        );
+    }
+
+    /// Recursively annotates list items with their prefix and indentation.
+    fn annotate_list_node(
+        options: &Options,
+        node_id: NodeId,
+        document: &Html,
+        ctx: &mut ConversionContext,
+        parent_indent: usize,
+    ) {
+        let Some(node_ref) = document.tree.get(node_id) else {
+            return;
+        };
+
+        let is_list = node_ref.value().as_element().is_some_and(|el| {
+            let name = el.name();
+            name == "ul" || name == "ol"
+        });
+
+        if is_list {
+            let el = node_ref.value().as_element();
+            let is_ordered = el.is_some_and(|e| e.name() == "ol");
+            let start: usize = el
+                .and_then(|e| e.attr("start"))
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1);
+
+            // Count `<li>` children to determine max number width.
+            let li_count = node_ref
+                .children()
+                .filter(|c| c.value().as_element().is_some_and(|e| e.name() == "li"))
+                .count();
+
+            let max_number = start + li_count.saturating_sub(1);
+            let number_width = if is_ordered {
+                max_number.to_string().len()
+            } else {
+                0
+            };
+
+            let mut item_index = 0usize;
+            for child in node_ref.children() {
+                if child.value().as_element().is_some_and(|e| e.name() == "li") {
+                    let prefix = if is_ordered {
+                        let num = start + item_index;
+                        format!("{num:>number_width$}. ")
+                    } else {
+                        format!("{} ", options.bullet_marker)
+                    };
+                    let prefix_width = prefix.len();
+
+                    ctx.list_metadata.insert(
+                        child.id(),
+                        ListMetadata {
+                            prefix,
+                            prefix_width,
+                            parent_indent,
+                        },
+                    );
+
+                    // Recurse into `<li>` children looking for nested lists.
+                    Self::annotate_list_node(
+                        options,
+                        child.id(),
+                        document,
+                        ctx,
+                        parent_indent + prefix_width,
+                    );
+
+                    item_index += 1;
+                }
+            }
+        } else {
+            // Not a list element — recurse into children.
+            for child in node_ref.children() {
+                Self::annotate_list_node(options, child.id(), document, ctx, parent_indent);
+            }
+        }
+    }
+
+    // ── Traversal ────────────────────────────────────────────────────────
+
+    /// Processes a DOM node and returns its markdown representation.
+    fn process_node(
+        &self,
+        node_id: NodeId,
+        document: &Html,
+        ctx: &mut ConversionContext,
+    ) -> AdvancedResult {
+        let Some(node_ref) = document.tree.get(node_id) else {
+            return AdvancedResult::default();
+        };
+
+        match node_ref.value() {
+            Node::Text(text) => Self::process_text(text, ctx),
+            Node::Element(_) => {
+                let Some(element_ref) = ElementRef::wrap(node_ref) else {
+                    return AdvancedResult::default();
+                };
+                self.process_element(&element_ref, document, ctx)
+            }
+            Node::Document => {
+                // Process all children of the document root.
+                let mut combined = AdvancedResult::default();
+                for child in node_ref.children() {
+                    let child_result = self.process_node(child.id(), document, ctx);
+                    combined.header.push_str(&child_result.header);
+                    combined.markdown.push_str(&child_result.markdown);
+                    combined.footer.push_str(&child_result.footer);
+                }
+                combined
+            }
+            _ => AdvancedResult::default(),
+        }
+    }
+
+    /// Processes a text node.
+    fn process_text(text: &scraper::node::Text, ctx: &ConversionContext) -> AdvancedResult {
+        let raw: &str = text;
+
+        if ctx.in_pre {
+            return AdvancedResult::markdown(raw.to_owned());
+        }
+
+        let collapsed = whitespace::collapse_whitespace(raw);
+        let escaped =
+            escape::escape_markdown(&collapsed, ctx.options.escape_mode, EscapeContext::Normal);
+
+        AdvancedResult::markdown(escaped.into_owned())
+    }
+
+    /// Processes an element node by converting children first, then applying
+    /// rules.
+    fn process_element(
+        &self,
+        element: &ElementRef<'_>,
+        document: &Html,
+        ctx: &mut ConversionContext,
+    ) -> AdvancedResult {
+        let tag = element.value().name();
+
+        // Check if this tag should be removed entirely.
+        if self.remove_tags.iter().any(|t| t == tag)
+            || matches!(tag, "script" | "style" | "noscript")
+        {
+            return AdvancedResult::default();
+        }
+
+        // Track `<pre>` context.
+        let was_in_pre = ctx.in_pre;
+        if tag == "pre" {
+            ctx.in_pre = true;
+        }
+
+        // Recursively convert children.
+        let mut children_result = AdvancedResult::default();
+        let Some(node_ref) = document.tree.get(element.id()) else {
+            return AdvancedResult::default();
+        };
+        for child in node_ref.children() {
+            let child_result = self.process_node(child.id(), document, ctx);
+            children_result.header.push_str(&child_result.header);
+            children_result.markdown.push_str(&child_result.markdown);
+            children_result.footer.push_str(&child_result.footer);
+        }
+
+        // Restore `<pre>` context.
+        ctx.in_pre = was_in_pre;
+
+        let content = &children_result.markdown;
+
+        // Check if raw HTML should be kept.
+        if self.keep_tags.iter().any(|t| t == tag) {
+            let html = element.html();
+            return AdvancedResult::markdown(html);
+        }
+
+        // Dispatch to rules (LIFO — last registered wins).
+        if let Some(rules) = self.rules.get(tag) {
+            for rule in rules.iter().rev() {
+                match rule.apply(content, element, ctx) {
+                    RuleAction::Replace(md) => {
+                        return AdvancedResult {
+                            header: children_result.header,
+                            markdown: md,
+                            footer: children_result.footer,
+                        };
+                    }
+                    RuleAction::Advanced(result) => return result,
+                    RuleAction::Remove => return AdvancedResult::default(),
+                    RuleAction::Skip => {}
+                }
+            }
+        }
+
+        // No rule matched — transparent passthrough (emit children content).
+        children_result
+    }
+}

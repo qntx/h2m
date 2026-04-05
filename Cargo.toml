@@ -14,6 +14,11 @@ categories = ["command-line-utilities"]
 readme = "README.md"
 
 [workspace.dependencies]
+scraper = "0.26"
+ego-tree = "0.11"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+pretty_assertions = "1"
 
 
 [profile.release]
