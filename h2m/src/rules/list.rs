@@ -59,8 +59,9 @@ impl Rule for ListItemRule {
             } else {
                 result.push('\n');
                 result.push_str(&continuation_indent);
+                // Preserve existing indentation from nested lists.
                 if !line.trim().is_empty() {
-                    result.push_str(line.trim_start());
+                    result.push_str(line);
                 }
             }
         }

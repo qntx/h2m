@@ -52,15 +52,13 @@ pub fn clean_output(text: &str) -> String {
         }
     }
 
-    // Trim in-place rather than allocating via `.trim().to_owned()`.
-    let trimmed = result.trim();
-    if trimmed.len() == result.len() {
-        return result;
-    }
-    let start = result.len() - result.trim_start().len();
+    // Trim leading/trailing whitespace in-place.
     let end = result.trim_end().len();
     result.truncate(end);
-    result.drain(..start);
+    let start = result.len() - result.trim_start().len();
+    if start > 0 {
+        result.drain(..start);
+    }
     result
 }
 
