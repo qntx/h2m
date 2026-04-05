@@ -2,8 +2,8 @@
 
 use scraper::ElementRef;
 
-use crate::context::ConversionContext;
-use crate::rule::{Rule, RuleAction};
+use crate::context::Context;
+use crate::rule::{Action, Rule};
 
 /// Handles strikethrough elements.
 #[derive(Debug, Clone, Copy)]
@@ -14,20 +14,15 @@ impl Rule for StrikethroughRule {
         &["del", "s", "strike"]
     }
 
-    fn apply(
-        &self,
-        content: &str,
-        _element: &ElementRef<'_>,
-        _ctx: &ConversionContext,
-    ) -> RuleAction {
+    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &Context) -> Action {
         let trimmed = content.trim();
         if trimmed.is_empty() {
-            return RuleAction::Skip;
+            return Action::Skip;
         }
 
         let leading = if content.starts_with(' ') { " " } else { "" };
         let trailing = if content.ends_with(' ') { " " } else { "" };
 
-        RuleAction::Replace(format!("{leading}~~{trimmed}~~{trailing}"))
+        Action::Replace(format!("{leading}~~{trimmed}~~{trailing}"))
     }
 }

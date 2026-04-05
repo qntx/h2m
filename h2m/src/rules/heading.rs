@@ -2,9 +2,12 @@
 
 use scraper::ElementRef;
 
-use crate::context::ConversionContext;
+use crate::context::Context;
 use crate::options::HeadingStyle;
-use crate::rule::{Rule, RuleAction};
+use crate::rule::{Action, Rule};
+
+/// ATX heading prefixes indexed by level (0-indexed, level 1 → index 0).
+const ATX_PREFIXES: [&str; 6] = ["#", "##", "###", "####", "#####", "######"];
 
 /// Handles `<h1>` through `<h6>` elements.
 #[derive(Debug, Clone, Copy)]
@@ -15,18 +18,13 @@ impl Rule for HeadingRule {
         &["h1", "h2", "h3", "h4", "h5", "h6"]
     }
 
-    fn apply(
-        &self,
-        content: &str,
-        element: &ElementRef<'_>,
-        ctx: &ConversionContext,
-    ) -> RuleAction {
+    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &Context) -> Action {
         let tag = element.value().name();
         let level = heading_level(tag);
         let trimmed = content.trim().replace('\n', " ");
 
         if trimmed.is_empty() {
-            return RuleAction::Skip;
+            return Action::Skip;
         }
 
         let md = match ctx.options().heading_style {
@@ -37,16 +35,17 @@ impl Rule for HeadingRule {
                 format!("\n\n{trimmed}\n{underline}\n\n")
             }
             _ => {
-                let hashes = "#".repeat(level);
-                format!("\n\n{hashes} {trimmed}\n\n")
+                let prefix = ATX_PREFIXES[level - 1];
+                format!("\n\n{prefix} {trimmed}\n\n")
             }
         };
 
-        RuleAction::Replace(md)
+        Action::Replace(md)
     }
 }
 
 /// Extracts the heading level (1–6) from a tag name like `"h2"`.
+#[inline]
 fn heading_level(tag: &str) -> usize {
     tag.as_bytes()
         .get(1)

@@ -30,7 +30,7 @@ pub fn collapse_whitespace(text: &str) -> Cow<'_, str> {
 }
 
 /// Trims trailing whitespace from each line and collapses 3+ consecutive
-/// newlines into exactly two.
+/// newlines into exactly two. Returns the final output trimmed.
 pub fn clean_output(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut consecutive_newlines = 0u32;
@@ -52,8 +52,16 @@ pub fn clean_output(text: &str) -> String {
         }
     }
 
-    // Trim leading and trailing whitespace from the final output.
-    result.trim().to_owned()
+    // Trim in-place rather than allocating via `.trim().to_owned()`.
+    let trimmed = result.trim();
+    if trimmed.len() == result.len() {
+        return result;
+    }
+    let start = result.len() - result.trim_start().len();
+    let end = result.trim_end().len();
+    result.truncate(end);
+    result.drain(..start);
+    result
 }
 
 #[cfg(test)]

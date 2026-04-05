@@ -1,17 +1,13 @@
 //! Rule trait and action types for HTML element conversion.
 
-use crate::context::ConversionContext;
-use crate::result::AdvancedResult;
+use crate::context::Context;
 
 /// The action a rule returns to control how an element is converted.
 #[derive(Debug)]
 #[non_exhaustive]
-#[allow(clippy::module_name_repetitions)]
-pub enum RuleAction {
+pub enum Action {
     /// Replace the element with the given markdown string.
     Replace(String),
-    /// Replace the element with an advanced result containing header/footer.
-    Advanced(AdvancedResult),
     /// Skip this rule and try the next registered rule for this tag.
     Skip,
     /// Remove the element and all its content from the output.
@@ -23,7 +19,7 @@ pub enum RuleAction {
 /// Rules are registered with the converter and dispatched by tag name.
 /// Multiple rules can be registered for the same tag; they are tried in
 /// reverse registration order (last-registered first). The first rule that
-/// returns [`RuleAction::Replace`] or [`RuleAction::Advanced`] wins.
+/// returns [`Action::Replace`] wins.
 pub trait Rule: Send + Sync {
     /// Returns the HTML tag names this rule handles.
     fn tags(&self) -> &'static [&'static str];
@@ -36,10 +32,5 @@ pub trait Rule: Send + Sync {
     ///   children.
     /// * `element` - The HTML element being converted.
     /// * `ctx` - The current conversion context with options and state.
-    fn apply(
-        &self,
-        content: &str,
-        element: &scraper::ElementRef<'_>,
-        ctx: &ConversionContext,
-    ) -> RuleAction;
+    fn apply(&self, content: &str, element: &scraper::ElementRef<'_>, ctx: &Context) -> Action;
 }

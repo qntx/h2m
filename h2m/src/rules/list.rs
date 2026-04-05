@@ -2,8 +2,8 @@
 
 use scraper::ElementRef;
 
-use crate::context::{self as ctx, ConversionContext};
-use crate::rule::{Rule, RuleAction};
+use crate::context::{self as ctx, Context};
+use crate::rule::{Action, Rule};
 
 /// Handles `<ul>` and `<ol>` list wrapper elements.
 #[derive(Debug, Clone, Copy)]
@@ -14,24 +14,16 @@ impl Rule for ListRule {
         &["ul", "ol"]
     }
 
-    fn apply(
-        &self,
-        content: &str,
-        element: &ElementRef<'_>,
-        _ctx: &ConversionContext,
-    ) -> RuleAction {
+    fn apply(&self, content: &str, element: &ElementRef<'_>, _ctx: &Context) -> Action {
         let trimmed = content.trim_end_matches('\n');
         if trimmed.is_empty() {
-            return RuleAction::Skip;
+            return Action::Skip;
         }
 
-        // If this list is nested inside another list item, don't add extra
-        // blank lines — just a single newline before.
-        let is_nested = ctx::has_ancestor(element, "li");
-        if is_nested {
-            RuleAction::Replace(format!("\n{trimmed}"))
+        if ctx::has_ancestor(element, "li") {
+            Action::Replace(format!("\n{trimmed}"))
         } else {
-            RuleAction::Replace(format!("\n\n{trimmed}\n\n"))
+            Action::Replace(format!("\n\n{trimmed}\n\n"))
         }
     }
 }
@@ -45,32 +37,24 @@ impl Rule for ListItemRule {
         &["li"]
     }
 
-    fn apply(
-        &self,
-        content: &str,
-        element: &ElementRef<'_>,
-        ctx: &ConversionContext,
-    ) -> RuleAction {
+    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &Context) -> Action {
         let node_id = element.id();
         let Some(meta) = ctx.list_metadata(node_id) else {
-            // No metadata — fall back to a simple bullet.
             let trimmed = content.trim();
-            return RuleAction::Replace(format!("- {trimmed}\n"));
+            return Action::Replace(format!("- {trimmed}\n"));
         };
 
-        let indent = " ".repeat(meta.parent_indent);
-        let prefix = &meta.prefix;
-
-        // Handle multi-line content: continuation lines get indented to align
-        // with the first line's content.
-        let continuation_indent = " ".repeat(meta.parent_indent + meta.prefix_width);
+        // Continuation lines (including nested list output) are indented
+        // by the prefix width so they align with the first line's content.
+        // We do NOT add parent_indent here — the parent `<li>` already
+        // indents this item's output as part of its own continuation lines.
+        let continuation_indent = " ".repeat(meta.prefix_width);
         let trimmed = content.trim();
 
-        let mut result = String::new();
+        let mut result = String::with_capacity(trimmed.len() + meta.prefix.len() + 8);
         for (i, line) in trimmed.lines().enumerate() {
             if i == 0 {
-                result.push_str(&indent);
-                result.push_str(prefix);
+                result.push_str(&meta.prefix);
                 result.push_str(line.trim_start());
             } else {
                 result.push('\n');
@@ -82,6 +66,6 @@ impl Rule for ListItemRule {
         }
         result.push('\n');
 
-        RuleAction::Replace(result)
+        Action::Replace(result)
     }
 }

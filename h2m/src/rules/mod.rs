@@ -9,7 +9,6 @@ mod link;
 mod list;
 mod misc;
 mod paragraph;
-mod text;
 
 use crate::converter::ConverterBuilder;
 use crate::plugin::Plugin;
@@ -26,21 +25,18 @@ pub struct CommonMark;
 
 impl Plugin for CommonMark {
     fn register(&self, builder: &mut ConverterBuilder) {
-        // Block-level rules.
-        builder.add_rule_boxed(Box::new(paragraph::ParagraphRule));
-        builder.add_rule_boxed(Box::new(heading::HeadingRule));
-        builder.add_rule_boxed(Box::new(code_block::CodeBlockRule));
-        builder.add_rule_boxed(Box::new(blockquote::BlockquoteRule));
-        builder.add_rule_boxed(Box::new(list::ListRule));
-        builder.add_rule_boxed(Box::new(list::ListItemRule));
-        builder.add_rule_boxed(Box::new(misc::HorizontalRuleRule));
-        builder.add_rule_boxed(Box::new(misc::LineBreakRule));
-
-        // Inline rules.
-        builder.add_rule_boxed(Box::new(inline::StrongRule));
-        builder.add_rule_boxed(Box::new(inline::EmphasisRule));
-        builder.add_rule_boxed(Box::new(inline::InlineCodeRule));
-        builder.add_rule_boxed(Box::new(link::LinkRule));
-        builder.add_rule_boxed(Box::new(image::ImageRule));
+        builder.add_rule(paragraph::ParagraphRule);
+        builder.add_rule(heading::HeadingRule);
+        builder.add_rule(code_block::CodeBlockRule);
+        builder.add_rule(blockquote::BlockquoteRule);
+        builder.add_rule(list::ListRule);
+        builder.add_rule(list::ListItemRule);
+        builder.add_rule(misc::HorizontalRuleRule);
+        builder.add_rule(misc::LineBreakRule);
+        builder.add_rule(inline::StrongRule);
+        builder.add_rule(inline::EmphasisRule);
+        builder.add_rule(inline::InlineCodeRule);
+        builder.add_rule(link::LinkRule);
+        builder.add_rule(image::ImageRule);
     }
 }

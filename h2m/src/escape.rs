@@ -4,33 +4,21 @@ use std::borrow::Cow;
 
 use crate::options::EscapeMode;
 
-/// The context in which text is being escaped, which determines which
-/// characters need escaping.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EscapeContext {
-    /// Normal text content.
-    Normal,
-    /// Inside a link text `[...]` (reserved for future use).
-    #[allow(dead_code)]
-    LinkText,
-}
-
 /// Characters that are special in markdown and need escaping in normal text.
 const MARKDOWN_SPECIAL: &[char] = &['\\', '*', '_', '`', '[', ']', '|', '<', '>'];
 
 /// Escapes markdown special characters in text content.
 ///
 /// Returns a borrowed [`Cow`] when no escaping is needed (common fast path).
-pub fn escape_markdown(text: &str, mode: EscapeMode, ctx: EscapeContext) -> Cow<'_, str> {
+pub fn escape_markdown(text: &str, mode: EscapeMode) -> Cow<'_, str> {
     if matches!(mode, EscapeMode::Disabled) {
         return Cow::Borrowed(text);
     }
 
     // Fast path: check if any escaping is needed at all.
-    let needs_escape = text.chars().any(|c| {
-        MARKDOWN_SPECIAL.contains(&c)
-            || (ctx == EscapeContext::Normal && is_line_start_pattern(text, c))
-    });
+    let needs_escape = text
+        .chars()
+        .any(|c| MARKDOWN_SPECIAL.contains(&c) || is_line_start_trigger(c));
 
     if !needs_escape {
         return Cow::Borrowed(text);
@@ -63,8 +51,9 @@ pub fn escape_markdown(text: &str, mode: EscapeMode, ctx: EscapeContext) -> Cow<
     Cow::Owned(result)
 }
 
-/// Checks if a character could be part of a line-start markdown pattern.
-const fn is_line_start_pattern(_text: &str, c: char) -> bool {
+/// Checks if a character could begin a line-start markdown pattern.
+#[inline]
+const fn is_line_start_trigger(c: char) -> bool {
     matches!(c, '#' | '>' | '-' | '+') || c.is_ascii_digit()
 }
 
@@ -114,33 +103,33 @@ mod tests {
 
     #[test]
     fn plain_text_not_escaped() {
-        let result = escape_markdown("hello world", EscapeMode::Basic, EscapeContext::Normal);
+        let result = escape_markdown("hello world", EscapeMode::Basic);
         assert_eq!(result, "hello world");
         assert!(matches!(result, Cow::Borrowed(_)));
     }
 
     #[test]
     fn special_chars_escaped() {
-        let result = escape_markdown("a*b_c`d", EscapeMode::Basic, EscapeContext::Normal);
+        let result = escape_markdown("a*b_c`d", EscapeMode::Basic);
         assert_eq!(result, "a\\*b\\_c\\`d");
     }
 
     #[test]
     fn disabled_mode_no_escape() {
-        let result = escape_markdown("a*b", EscapeMode::Disabled, EscapeContext::Normal);
+        let result = escape_markdown("a*b", EscapeMode::Disabled);
         assert_eq!(result, "a*b");
         assert!(matches!(result, Cow::Borrowed(_)));
     }
 
     #[test]
     fn brackets_escaped() {
-        let result = escape_markdown("[link]", EscapeMode::Basic, EscapeContext::Normal);
+        let result = escape_markdown("[link]", EscapeMode::Basic);
         assert_eq!(result, "\\[link\\]");
     }
 
     #[test]
     fn pipe_escaped() {
-        let result = escape_markdown("a|b", EscapeMode::Basic, EscapeContext::Normal);
+        let result = escape_markdown("a|b", EscapeMode::Basic);
         assert_eq!(result, "a\\|b");
     }
 }

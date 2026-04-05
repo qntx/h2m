@@ -37,23 +37,13 @@ pub enum Fence {
 impl Fence {
     /// Returns the fence character.
     #[must_use]
+    #[inline]
     pub const fn char(self) -> char {
         match self {
             Self::Backtick => '`',
             Self::Tilde => '~',
         }
     }
-}
-
-/// Style for rendering links.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[non_exhaustive]
-pub enum LinkStyle {
-    /// Inline links: `[text](url "title")`.
-    #[default]
-    Inlined,
-    /// Reference-style links: `[text][ref]` with definitions at the bottom.
-    Referenced,
 }
 
 /// Mode for escaping markdown special characters in text content.
@@ -85,8 +75,6 @@ pub struct Options {
     pub em_delimiter: char,
     /// Delimiter for strong emphasis (bold).
     pub strong_delimiter: &'static str,
-    /// Link rendering style.
-    pub link_style: LinkStyle,
     /// Horizontal rule string.
     pub horizontal_rule: &'static str,
     /// Escape mode for markdown special characters.
@@ -102,7 +90,6 @@ impl Default for Options {
             fence: Fence::default(),
             em_delimiter: '*',
             strong_delimiter: "**",
-            link_style: LinkStyle::default(),
             horizontal_rule: "---",
             escape_mode: EscapeMode::default(),
         }

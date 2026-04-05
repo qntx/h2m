@@ -24,24 +24,25 @@
 //! assert_eq!(md, "~~old~~");
 //! ```
 
-pub mod context;
 pub mod converter;
 pub mod error;
 pub mod options;
 pub mod plugin;
 pub mod plugins;
-pub mod result;
 pub mod rule;
 pub mod rules;
 
+mod context;
 mod escape;
+mod utils;
 mod whitespace;
 
+// Re-export `Context` so external `Rule` implementors can use it.
+pub use context::Context;
 pub use converter::{Converter, ConverterBuilder};
 pub use error::{Error, Result};
 pub use options::Options;
-pub use result::AdvancedResult;
-pub use rule::{Rule, RuleAction};
+pub use rule::{Action, Rule};
 
 /// Converts HTML to Markdown using default `CommonMark` settings.
 ///

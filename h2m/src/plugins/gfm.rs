@@ -31,11 +31,11 @@ pub struct Gfm;
 
 impl Plugin for Gfm {
     fn register(&self, builder: &mut ConverterBuilder) {
-        builder.add_rule_boxed(Box::new(TableRule));
-        builder.add_rule_boxed(Box::new(TableSectionRule));
-        builder.add_rule_boxed(Box::new(TableRowRule));
-        builder.add_rule_boxed(Box::new(TableCellRule));
-        builder.add_rule_boxed(Box::new(StrikethroughRule));
-        builder.add_rule_boxed(Box::new(TaskListRule));
+        builder.add_rule(TableRule);
+        builder.add_rule(TableSectionRule);
+        builder.add_rule(TableRowRule);
+        builder.add_rule(TableCellRule);
+        builder.add_rule(StrikethroughRule);
+        builder.add_rule(TaskListRule);
     }
 }

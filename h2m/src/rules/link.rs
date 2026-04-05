@@ -2,11 +2,10 @@
 
 use scraper::ElementRef;
 
-use crate::context::{self as ctx, ConversionContext};
-use crate::options::LinkStyle;
-use crate::rule::{Rule, RuleAction};
+use crate::context::{self as ctx, Context};
+use crate::rule::{Action, Rule};
 
-/// Handles `<a>` elements.
+/// Handles `<a>` elements as inline links: `[text](href "title")`.
 #[derive(Debug, Clone, Copy)]
 pub struct LinkRule;
 
@@ -15,41 +14,20 @@ impl Rule for LinkRule {
         &["a"]
     }
 
-    fn apply(
-        &self,
-        content: &str,
-        element: &ElementRef<'_>,
-        ctx: &ConversionContext,
-    ) -> RuleAction {
+    fn apply(&self, content: &str, element: &ElementRef<'_>, _ctx: &Context) -> Action {
         let href = ctx::attr(element, "href").unwrap_or("");
         let title = ctx::attr(element, "title");
 
         // Skip empty links.
         if href.is_empty() && content.trim().is_empty() {
-            return RuleAction::Skip;
+            return Action::Skip;
         }
-
-        let content_trimmed = content.trim();
 
         // If content is empty, use the URL as the text.
-        let display = if content_trimmed.is_empty() {
-            href
-        } else {
-            content_trimmed
-        };
+        let trimmed = content.trim();
+        let display = if trimmed.is_empty() { href } else { trimmed };
 
-        match ctx.options().link_style {
-            LinkStyle::Inlined => {
-                let title_part = title.map_or_else(String::new, |t| format!(" \"{t}\""));
-                RuleAction::Replace(format!("[{display}]({href}{title_part})"))
-            }
-            LinkStyle::Referenced => {
-                // Reference-style links are more complex — for now, fall back
-                // to inlined. Full reference-style support can be added later
-                // by accumulating references in the context footer.
-                let title_part = title.map_or_else(String::new, |t| format!(" \"{t}\""));
-                RuleAction::Replace(format!("[{display}]({href}{title_part})"))
-            }
-        }
+        let title_part = title.map_or_else(String::new, |t| format!(" \"{t}\""));
+        Action::Replace(format!("[{display}]({href}{title_part})"))
     }
 }

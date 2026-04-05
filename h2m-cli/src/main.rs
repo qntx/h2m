@@ -7,7 +7,7 @@ use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::process;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
 /// Convert HTML to Markdown.
 #[derive(Parser, Debug)]
@@ -20,21 +20,17 @@ struct Cli {
     #[arg(long)]
     gfm: bool,
 
-    /// Heading style: "atx" or "setext".
-    #[arg(long, default_value = "atx")]
-    heading_style: String,
+    /// Heading style.
+    #[arg(long, value_enum, default_value_t = HeadingStyle::Atx)]
+    heading_style: HeadingStyle,
 
     /// Bullet character for unordered lists.
     #[arg(long, default_value = "-")]
     bullet: char,
 
-    /// Fence style: "backtick" or "tilde".
-    #[arg(long, default_value = "backtick")]
-    fence: String,
-
-    /// Link style: "inlined" or "referenced".
-    #[arg(long, default_value = "inlined")]
-    link_style: String,
+    /// Fence style for code blocks.
+    #[arg(long, value_enum, default_value_t = FenceStyle::Backtick)]
+    fence: FenceStyle,
 
     /// Disable markdown character escaping.
     #[arg(long)]
@@ -43,6 +39,24 @@ struct Cli {
     /// Output file (writes to stdout if omitted).
     #[arg(short, long)]
     output: Option<PathBuf>,
+}
+
+/// Heading rendering style.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum HeadingStyle {
+    /// ATX-style (`# Heading`).
+    Atx,
+    /// Setext-style (underline with `===` or `---`).
+    Setext,
+}
+
+/// Code fence character style.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum FenceStyle {
+    /// Triple backtick fences.
+    Backtick,
+    /// Triple tilde fences.
+    Tilde,
 }
 
 fn main() {
@@ -65,15 +79,12 @@ fn main() {
 
     let mut options = h2m::Options::default();
 
-    if cli.heading_style == "setext" {
+    if matches!(cli.heading_style, HeadingStyle::Setext) {
         options.heading_style = h2m::options::HeadingStyle::Setext;
     }
     options.bullet_marker = cli.bullet;
-    if cli.fence == "tilde" {
+    if matches!(cli.fence, FenceStyle::Tilde) {
         options.fence = h2m::options::Fence::Tilde;
-    }
-    if cli.link_style == "referenced" {
-        options.link_style = h2m::options::LinkStyle::Referenced;
     }
     if cli.no_escape {
         options.escape_mode = h2m::options::EscapeMode::Disabled;

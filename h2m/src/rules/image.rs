@@ -2,8 +2,8 @@
 
 use scraper::ElementRef;
 
-use crate::context::{self as ctx, ConversionContext};
-use crate::rule::{Rule, RuleAction};
+use crate::context::{self as ctx, Context};
+use crate::rule::{Action, Rule};
 
 /// Handles `<img>` elements.
 #[derive(Debug, Clone, Copy)]
@@ -14,21 +14,16 @@ impl Rule for ImageRule {
         &["img"]
     }
 
-    fn apply(
-        &self,
-        _content: &str,
-        element: &ElementRef<'_>,
-        _ctx: &ConversionContext,
-    ) -> RuleAction {
+    fn apply(&self, _content: &str, element: &ElementRef<'_>, _ctx: &Context) -> Action {
         let src = ctx::attr(element, "src").unwrap_or("");
         let alt = ctx::attr(element, "alt").unwrap_or("");
         let title = ctx::attr(element, "title");
 
         if src.is_empty() {
-            return RuleAction::Skip;
+            return Action::Skip;
         }
 
         let title_part = title.map_or_else(String::new, |t| format!(" \"{t}\""));
-        RuleAction::Replace(format!("![{alt}]({src}{title_part})"))
+        Action::Replace(format!("![{alt}]({src}{title_part})"))
     }
 }

@@ -2,8 +2,8 @@
 
 use scraper::ElementRef;
 
-use crate::context::ConversionContext;
-use crate::rule::{Rule, RuleAction};
+use crate::context::Context;
+use crate::rule::{Action, Rule};
 
 /// Handles `<blockquote>` elements, including nested blockquotes.
 #[derive(Debug, Clone, Copy)]
@@ -14,30 +14,26 @@ impl Rule for BlockquoteRule {
         &["blockquote"]
     }
 
-    fn apply(
-        &self,
-        content: &str,
-        _element: &ElementRef<'_>,
-        _ctx: &ConversionContext,
-    ) -> RuleAction {
+    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &Context) -> Action {
         let trimmed = content.trim();
         if trimmed.is_empty() {
-            return RuleAction::Skip;
+            return Action::Skip;
         }
 
-        // Prefix every line with "> ".
-        let quoted: String = trimmed
-            .lines()
-            .map(|line| {
-                if line.is_empty() {
-                    ">".to_owned()
-                } else {
-                    format!("> {line}")
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+        // Pre-allocate: each line gets "> " (2 chars) prefix.
+        let mut quoted = String::with_capacity(trimmed.len() + trimmed.lines().count() * 2);
+        for (i, line) in trimmed.lines().enumerate() {
+            if i > 0 {
+                quoted.push('\n');
+            }
+            if line.is_empty() {
+                quoted.push('>');
+            } else {
+                quoted.push_str("> ");
+                quoted.push_str(line);
+            }
+        }
 
-        RuleAction::Replace(format!("\n\n{quoted}\n\n"))
+        Action::Replace(format!("\n\n{quoted}\n\n"))
     }
 }

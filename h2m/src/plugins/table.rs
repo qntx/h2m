@@ -1,11 +1,13 @@
 //! GFM table (`<table>`) conversion rules.
 
+#![allow(clippy::missing_docs_in_private_items)]
+
 use ego_tree::NodeRef;
 use scraper::ElementRef;
 use scraper::node::Node;
 
-use crate::context::ConversionContext;
-use crate::rule::{Rule, RuleAction};
+use crate::context::Context;
+use crate::rule::{Action, Rule};
 
 /// Handles `<table>` elements, rendering them as GFM pipe tables.
 #[derive(Debug, Clone, Copy)]
@@ -16,71 +18,61 @@ impl Rule for TableRule {
         &["table"]
     }
 
-    fn apply(
-        &self,
-        _content: &str,
-        element: &ElementRef<'_>,
-        _ctx: &ConversionContext,
-    ) -> RuleAction {
+    fn apply(&self, _content: &str, element: &ElementRef<'_>, _ctx: &Context) -> Action {
         let rows = collect_rows(element);
         if rows.is_empty() {
-            return RuleAction::Skip;
+            return Action::Skip;
         }
 
-        // Determine column count from the widest row.
         let col_count = rows.iter().map(|r| r.cells.len()).max().unwrap_or(0);
         if col_count == 0 {
-            return RuleAction::Skip;
+            return Action::Skip;
         }
 
-        // Compute max width per column.
-        let mut col_widths = vec![3usize; col_count]; // minimum "---"
+        // Compute max width per column (minimum 3 for "---").
+        let mut col_widths = vec![3usize; col_count];
         for row in &rows {
             for (j, cell) in row.cells.iter().enumerate() {
-                let w = cell.text.len().max(3);
-                if w > col_widths[j] {
-                    col_widths[j] = w;
-                }
+                col_widths[j] = col_widths[j].max(cell.text.len().max(3));
             }
         }
 
         let mut output = String::new();
 
-        // Determine the header row.
         let (header, body_rows) = if rows.first().is_some_and(|r| r.is_header) {
             (&rows[0], &rows[1..])
         } else {
             // Synthesize an empty header row.
             let empty_header = TableRow {
                 is_header: true,
-                cells: (0..col_count)
-                    .map(|_| TableCell {
+                cells: vec![
+                    TableCell {
                         text: String::new(),
                         alignment: Alignment::None,
-                    })
-                    .collect(),
+                    };
+                    col_count
+                ],
             };
-            // We can't return a reference to a local, so handle inline.
-            output.push_str(&format_row(&empty_header, &col_widths));
+            write_row(&mut output, &empty_header, &col_widths);
             output.push('\n');
-            output.push_str(&format_separator(&empty_header.cells, &col_widths));
+            write_separator(&mut output, &empty_header.cells, &col_widths);
             output.push('\n');
             for row in &rows {
-                output.push_str(&format_row(row, &col_widths));
+                write_row(&mut output, row, &col_widths);
                 output.push('\n');
             }
-            return RuleAction::Replace(format!("\n\n{}\n", output.trim_end()));
+            return Action::Replace(format!("\n\n{}\n", output.trim_end()));
         };
 
-        output.push_str(&format_row(header, &col_widths));
+        write_row(&mut output, header, &col_widths);
         output.push('\n');
-        output.push_str(&format_separator(&header.cells, &col_widths));
+        write_separator(&mut output, &header.cells, &col_widths);
         for row in body_rows {
             output.push('\n');
-            output.push_str(&format_row(row, &col_widths));
+            write_row(&mut output, row, &col_widths);
         }
 
-        RuleAction::Replace(format!("\n\n{output}\n\n"))
+        Action::Replace(format!("\n\n{output}\n\n"))
     }
 }
 
@@ -93,18 +85,12 @@ impl Rule for TableSectionRule {
         &["thead", "tbody", "tfoot"]
     }
 
-    fn apply(
-        &self,
-        content: &str,
-        _element: &ElementRef<'_>,
-        _ctx: &ConversionContext,
-    ) -> RuleAction {
-        RuleAction::Replace(content.to_owned())
+    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &Context) -> Action {
+        Action::Replace(content.to_owned())
     }
 }
 
-/// Handles `<tr>` — transparent passthrough (table assembly happens in
-/// [`TableRule`]).
+/// Handles `<tr>` — transparent passthrough.
 #[derive(Debug, Clone, Copy)]
 pub struct TableRowRule;
 
@@ -113,13 +99,8 @@ impl Rule for TableRowRule {
         &["tr"]
     }
 
-    fn apply(
-        &self,
-        content: &str,
-        _element: &ElementRef<'_>,
-        _ctx: &ConversionContext,
-    ) -> RuleAction {
-        RuleAction::Replace(content.to_owned())
+    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &Context) -> Action {
+        Action::Replace(content.to_owned())
     }
 }
 
@@ -132,57 +113,41 @@ impl Rule for TableCellRule {
         &["td", "th"]
     }
 
-    fn apply(
-        &self,
-        content: &str,
-        _element: &ElementRef<'_>,
-        _ctx: &ConversionContext,
-    ) -> RuleAction {
-        RuleAction::Replace(content.to_owned())
+    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &Context) -> Action {
+        Action::Replace(content.to_owned())
     }
 }
 
-// ── Internal table model ─────────────────────────────────────────────────
+// ── Internal types ───────────────────────────────────────────────────────
 
-/// Cell alignment in a table column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Alignment {
-    /// No explicit alignment.
     None,
-    /// Left-aligned.
     Left,
-    /// Center-aligned.
     Center,
-    /// Right-aligned.
     Right,
 }
 
-/// A single cell in a table row.
 #[derive(Debug, Clone)]
 struct TableCell {
-    /// The text content of the cell.
     text: String,
-    /// The alignment derived from the element's `align` or `style` attribute.
     alignment: Alignment,
 }
 
-/// A table row with its cells.
 #[derive(Debug, Clone)]
 struct TableRow {
-    /// Whether this row is part of the header (`<thead>` or all `<th>`).
     is_header: bool,
-    /// The cells in this row.
     cells: Vec<TableCell>,
 }
 
-/// Collects all rows and cells from a `<table>` element by walking the DOM.
+// ── DOM walking ──────────────────────────────────────────────────────────
+
 fn collect_rows(table: &ElementRef<'_>) -> Vec<TableRow> {
     let mut rows = Vec::new();
     collect_rows_recursive(table, &mut rows);
     rows
 }
 
-/// Recursively walks table children to find `<tr>` elements.
 fn collect_rows_recursive(parent: &ElementRef<'_>, rows: &mut Vec<TableRow>) {
     for child in parent.children() {
         if let Some(el) = child.value().as_element() {
@@ -200,7 +165,6 @@ fn collect_rows_recursive(parent: &ElementRef<'_>, rows: &mut Vec<TableRow>) {
     }
 }
 
-/// Collects cells from a `<tr>` element.
 fn collect_cells(tr: &ElementRef<'_>) -> TableRow {
     let mut cells = Vec::new();
     let mut all_th = true;
@@ -232,7 +196,6 @@ fn collect_cells(tr: &ElementRef<'_>) -> TableRow {
     }
 }
 
-/// Recursively collects text content from a node and its descendants.
 fn collect_text_content(node: &NodeRef<'_, Node>) -> String {
     let mut text = String::new();
     match node.value() {
@@ -246,7 +209,7 @@ fn collect_text_content(node: &NodeRef<'_, Node>) -> String {
     text
 }
 
-/// Parses alignment from `align` attribute or inline `style`.
+#[inline]
 fn parse_alignment(align: Option<&str>, style: Option<&str>) -> Alignment {
     if let Some(a) = align {
         return match a.to_ascii_lowercase().as_str() {
@@ -272,38 +235,52 @@ fn parse_alignment(align: Option<&str>, style: Option<&str>) -> Alignment {
     Alignment::None
 }
 
-/// Formats a single table row as a pipe-delimited string.
-fn format_row(row: &TableRow, col_widths: &[usize]) -> String {
-    let mut out = String::from("|");
+// ── Formatting ───────────────────────────────────────────────────────────
+
+fn write_row(out: &mut String, row: &TableRow, col_widths: &[usize]) {
+    out.push('|');
     for (i, width) in col_widths.iter().enumerate() {
         let text = row.cells.get(i).map_or("", |c| c.text.as_str());
         out.push(' ');
         out.push_str(text);
-        // Pad to column width.
         for _ in text.len()..*width {
             out.push(' ');
         }
         out.push_str(" |");
     }
-    out
 }
 
-/// Formats the separator row (`|---|---|`).
-fn format_separator(header_cells: &[TableCell], col_widths: &[usize]) -> String {
-    let mut out = String::from("|");
+fn write_separator(out: &mut String, header_cells: &[TableCell], col_widths: &[usize]) {
+    out.push('|');
     for (i, width) in col_widths.iter().enumerate() {
         let alignment = header_cells.get(i).map_or(Alignment::None, |c| c.alignment);
-        let sep = match alignment {
-            Alignment::Left => format!(":{}", "-".repeat(width.saturating_sub(1))),
-            Alignment::Center => {
-                format!(":{}:", "-".repeat(width.saturating_sub(2).max(1)))
-            }
-            Alignment::Right => format!("{}:", "-".repeat(width.saturating_sub(1))),
-            Alignment::None => "-".repeat(*width),
-        };
         out.push(' ');
-        out.push_str(&sep);
+        match alignment {
+            Alignment::Left => {
+                out.push(':');
+                for _ in 0..width.saturating_sub(1) {
+                    out.push('-');
+                }
+            }
+            Alignment::Center => {
+                out.push(':');
+                for _ in 0..width.saturating_sub(2).max(1) {
+                    out.push('-');
+                }
+                out.push(':');
+            }
+            Alignment::Right => {
+                for _ in 0..width.saturating_sub(1) {
+                    out.push('-');
+                }
+                out.push(':');
+            }
+            Alignment::None => {
+                for _ in 0..*width {
+                    out.push('-');
+                }
+            }
+        }
         out.push_str(" |");
     }
-    out
 }

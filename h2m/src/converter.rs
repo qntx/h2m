@@ -7,12 +7,11 @@ use ego_tree::NodeId;
 use scraper::node::Node;
 use scraper::{ElementRef, Html};
 
-use crate::context::{ConversionContext, ListMetadata};
-use crate::escape::{self, EscapeContext};
+use crate::context::{Context, ListMetadata};
+use crate::escape;
 use crate::options::Options;
 use crate::plugin::Plugin;
-use crate::result::AdvancedResult;
-use crate::rule::{Rule, RuleAction};
+use crate::rule::{Action, Rule};
 use crate::whitespace;
 
 // ── Builder ──────────────────────────────────────────────────────────────
@@ -63,8 +62,8 @@ impl ConverterBuilder {
     ///
     /// Rules registered later take priority over earlier rules for the same
     /// tag.
-    pub fn add_rule_boxed(&mut self, rule: Box<dyn Rule>) {
-        let arc: Arc<dyn Rule> = Arc::from(rule);
+    pub fn add_rule(&mut self, rule: impl Rule + 'static) {
+        let arc: Arc<dyn Rule> = Arc::new(rule);
         for &tag in arc.tags() {
             self.rules.entry(tag).or_default().push(Arc::clone(&arc));
         }
@@ -135,6 +134,12 @@ impl std::fmt::Debug for Converter {
     }
 }
 
+// Compile-time assertion that `Converter` is `Send + Sync`.
+const _: () = {
+    const fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<Converter>();
+};
+
 impl Converter {
     /// Returns a new [`ConverterBuilder`].
     #[must_use]
@@ -151,32 +156,14 @@ impl Converter {
     /// html5ever recovers from malformed HTML.
     pub fn convert(&self, html: &str) -> crate::Result<String> {
         let document = Html::parse_document(html);
-        let mut ctx = ConversionContext::new(self.options.clone());
+        let mut ctx = Context::new(self.options.clone());
 
         // Pre-pass: compute list metadata.
         self.annotate_lists(&document, &mut ctx);
 
         // Traverse from the root element (<html>).
         let root_id = document.root_element().id();
-        let result = self.process_node(root_id, &document, &mut ctx);
-
-        // Assemble final output.
-        let mut output = String::with_capacity(
-            result.header.len() + result.markdown.len() + result.footer.len() + 4,
-        );
-        if !result.header.is_empty() {
-            output.push_str(&result.header);
-            output.push_str("\n\n");
-        }
-        output.push_str(&result.markdown);
-        if !ctx.footers.is_empty() {
-            output.push_str("\n\n");
-            output.push_str(&ctx.footers.join("\n"));
-        }
-        if !result.footer.is_empty() {
-            output.push_str("\n\n");
-            output.push_str(&result.footer);
-        }
+        let output = self.process_node(root_id, &document, &mut ctx);
 
         Ok(whitespace::clean_output(&output))
     }
@@ -195,7 +182,7 @@ impl Converter {
     // ── List pre-pass ────────────────────────────────────────────────────
 
     /// Walks the DOM to compute [`ListMetadata`] for every `<li>` element.
-    fn annotate_lists(&self, document: &Html, ctx: &mut ConversionContext) {
+    fn annotate_lists(&self, document: &Html, ctx: &mut Context) {
         Self::annotate_list_node(
             &self.options,
             document.root_element().id(),
@@ -210,7 +197,7 @@ impl Converter {
         options: &Options,
         node_id: NodeId,
         document: &Html,
-        ctx: &mut ConversionContext,
+        ctx: &mut Context,
         parent_indent: usize,
     ) {
         let Some(node_ref) = document.tree.get(node_id) else {
@@ -230,7 +217,6 @@ impl Converter {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(1);
 
-            // Count `<li>` children to determine max number width.
             let li_count = node_ref
                 .children()
                 .filter(|c| c.value().as_element().is_some_and(|e| e.name() == "li"))
@@ -263,7 +249,6 @@ impl Converter {
                         },
                     );
 
-                    // Recurse into `<li>` children looking for nested lists.
                     Self::annotate_list_node(
                         options,
                         child.id(),
@@ -276,7 +261,6 @@ impl Converter {
                 }
             }
         } else {
-            // Not a list element — recurse into children.
             for child in node_ref.children() {
                 Self::annotate_list_node(options, child.id(), document, ctx, parent_indent);
             }
@@ -286,52 +270,42 @@ impl Converter {
     // ── Traversal ────────────────────────────────────────────────────────
 
     /// Processes a DOM node and returns its markdown representation.
-    fn process_node(
-        &self,
-        node_id: NodeId,
-        document: &Html,
-        ctx: &mut ConversionContext,
-    ) -> AdvancedResult {
+    fn process_node(&self, node_id: NodeId, document: &Html, ctx: &mut Context) -> String {
         let Some(node_ref) = document.tree.get(node_id) else {
-            return AdvancedResult::default();
+            return String::new();
         };
 
         match node_ref.value() {
             Node::Text(text) => Self::process_text(text, ctx),
             Node::Element(_) => {
                 let Some(element_ref) = ElementRef::wrap(node_ref) else {
-                    return AdvancedResult::default();
+                    return String::new();
                 };
                 self.process_element(&element_ref, document, ctx)
             }
             Node::Document => {
-                // Process all children of the document root.
-                let mut combined = AdvancedResult::default();
+                let mut combined = String::new();
                 for child in node_ref.children() {
-                    let child_result = self.process_node(child.id(), document, ctx);
-                    combined.header.push_str(&child_result.header);
-                    combined.markdown.push_str(&child_result.markdown);
-                    combined.footer.push_str(&child_result.footer);
+                    combined.push_str(&self.process_node(child.id(), document, ctx));
                 }
                 combined
             }
-            _ => AdvancedResult::default(),
+            _ => String::new(),
         }
     }
 
     /// Processes a text node.
-    fn process_text(text: &scraper::node::Text, ctx: &ConversionContext) -> AdvancedResult {
+    fn process_text(text: &scraper::node::Text, ctx: &Context) -> String {
         let raw: &str = text;
 
         if ctx.in_pre {
-            return AdvancedResult::markdown(raw.to_owned());
+            return raw.to_owned();
         }
 
         let collapsed = whitespace::collapse_whitespace(raw);
-        let escaped =
-            escape::escape_markdown(&collapsed, ctx.options.escape_mode, EscapeContext::Normal);
+        let escaped = escape::escape_markdown(&collapsed, ctx.options.escape_mode);
 
-        AdvancedResult::markdown(escaped.into_owned())
+        escaped.into_owned()
     }
 
     /// Processes an element node by converting children first, then applying
@@ -340,65 +314,53 @@ impl Converter {
         &self,
         element: &ElementRef<'_>,
         document: &Html,
-        ctx: &mut ConversionContext,
-    ) -> AdvancedResult {
+        ctx: &mut Context,
+    ) -> String {
         let tag = element.value().name();
 
         // Check if this tag should be removed entirely.
         if self.remove_tags.iter().any(|t| t == tag)
             || matches!(tag, "script" | "style" | "noscript")
         {
-            return AdvancedResult::default();
+            return String::new();
         }
 
-        // Track `<pre>` context.
+        // Track preformatted context — suppress whitespace collapse and
+        // escaping inside `<pre>` and inline `<code>`/`<kbd>`/`<samp>`/`<tt>`.
         let was_in_pre = ctx.in_pre;
-        if tag == "pre" {
+        if matches!(tag, "pre" | "code" | "kbd" | "samp" | "tt") {
             ctx.in_pre = true;
         }
 
         // Recursively convert children.
-        let mut children_result = AdvancedResult::default();
+        let mut content = String::new();
         let Some(node_ref) = document.tree.get(element.id()) else {
-            return AdvancedResult::default();
+            return String::new();
         };
         for child in node_ref.children() {
-            let child_result = self.process_node(child.id(), document, ctx);
-            children_result.header.push_str(&child_result.header);
-            children_result.markdown.push_str(&child_result.markdown);
-            children_result.footer.push_str(&child_result.footer);
+            content.push_str(&self.process_node(child.id(), document, ctx));
         }
 
         // Restore `<pre>` context.
         ctx.in_pre = was_in_pre;
 
-        let content = &children_result.markdown;
-
         // Check if raw HTML should be kept.
         if self.keep_tags.iter().any(|t| t == tag) {
-            let html = element.html();
-            return AdvancedResult::markdown(html);
+            return element.html();
         }
 
         // Dispatch to rules (LIFO — last registered wins).
         if let Some(rules) = self.rules.get(tag) {
             for rule in rules.iter().rev() {
-                match rule.apply(content, element, ctx) {
-                    RuleAction::Replace(md) => {
-                        return AdvancedResult {
-                            header: children_result.header,
-                            markdown: md,
-                            footer: children_result.footer,
-                        };
-                    }
-                    RuleAction::Advanced(result) => return result,
-                    RuleAction::Remove => return AdvancedResult::default(),
-                    RuleAction::Skip => {}
+                match rule.apply(&content, element, ctx) {
+                    Action::Replace(md) => return md,
+                    Action::Remove => return String::new(),
+                    Action::Skip => {}
                 }
             }
         }
 
-        // No rule matched — transparent passthrough (emit children content).
-        children_result
+        // No rule matched — transparent passthrough.
+        content
     }
 }

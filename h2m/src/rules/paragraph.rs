@@ -2,8 +2,8 @@
 
 use scraper::ElementRef;
 
-use crate::context::ConversionContext;
-use crate::rule::{Rule, RuleAction};
+use crate::context::Context;
+use crate::rule::{Action, Rule};
 
 /// Handles `<p>`, `<div>`, `<section>`, `<article>`, `<main>`, `<header>`,
 /// `<footer>`, and `<nav>` elements.
@@ -17,16 +17,11 @@ impl Rule for ParagraphRule {
         ]
     }
 
-    fn apply(
-        &self,
-        content: &str,
-        _element: &ElementRef<'_>,
-        _ctx: &ConversionContext,
-    ) -> RuleAction {
+    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &Context) -> Action {
         let trimmed = content.trim();
         if trimmed.is_empty() {
-            return RuleAction::Skip;
+            return Action::Skip;
         }
-        RuleAction::Replace(format!("\n\n{trimmed}\n\n"))
+        Action::Replace(format!("\n\n{trimmed}\n\n"))
     }
 }

@@ -1,9 +1,9 @@
-//! Miscellaneous rules: horizontal rules, line breaks, etc.
+//! Miscellaneous rules: horizontal rules, line breaks.
 
 use scraper::ElementRef;
 
-use crate::context::ConversionContext;
-use crate::rule::{Rule, RuleAction};
+use crate::context::Context;
+use crate::rule::{Action, Rule};
 
 /// Handles `<hr>` elements.
 #[derive(Debug, Clone, Copy)]
@@ -14,14 +14,9 @@ impl Rule for HorizontalRuleRule {
         &["hr"]
     }
 
-    fn apply(
-        &self,
-        _content: &str,
-        _element: &ElementRef<'_>,
-        ctx: &ConversionContext,
-    ) -> RuleAction {
+    fn apply(&self, _content: &str, _element: &ElementRef<'_>, ctx: &Context) -> Action {
         let rule = ctx.options().horizontal_rule;
-        RuleAction::Replace(format!("\n\n{rule}\n\n"))
+        Action::Replace(format!("\n\n{rule}\n\n"))
     }
 }
 
@@ -34,13 +29,7 @@ impl Rule for LineBreakRule {
         &["br"]
     }
 
-    fn apply(
-        &self,
-        _content: &str,
-        _element: &ElementRef<'_>,
-        _ctx: &ConversionContext,
-    ) -> RuleAction {
-        // Two trailing spaces + newline for a hard break, or just newline.
-        RuleAction::Replace("  \n".to_owned())
+    fn apply(&self, _content: &str, _element: &ElementRef<'_>, _ctx: &Context) -> Action {
+        Action::Replace("  \n".to_owned())
     }
 }
