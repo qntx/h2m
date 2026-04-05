@@ -1,0 +1,15 @@
+[package]
+name = "h2m"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

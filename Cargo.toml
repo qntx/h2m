@@ -1,0 +1,93 @@
+[workspace]
+members = ["h2m", "h2m-cli"]
+default-members = ["h2m"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/qntx/h2m"
+description = "HTML to Markdown converter."
+keywords = ["html", "markdown", "converter"]
+categories = ["command-line-utilities"]
+readme = "README.md"
+
+[workspace.dependencies]
+
+
+[profile.release]
+codegen-units = 1
+lto = true
+panic = "abort"
+strip = true
+
+[profile.dev]
+debug = true
+opt-level = 0
+
+[profile.test]
+opt-level = 2
+
+[profile.ci]
+debug = false
+inherits = "dev"
+
+[profile.bench]
+debug = true
+inherits = "release"
+
+[workspace.lints.rust]
+elided_lifetimes_in_paths = "warn"
+missing_copy_implementations = "warn"
+missing_debug_implementations = "warn"
+missing_docs = "warn"
+rust_2024_compatibility = { level = "warn", priority = -1 }
+single_use_lifetimes = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+unsafe_code = "warn"
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+variant_size_differences = "warn"
+
+[workspace.lints.clippy]
+cargo = { level = "warn", priority = -1 }
+clone_on_ref_ptr = "warn"
+complexity = { level = "warn", priority = -1 }
+correctness = { level = "deny", priority = -1 }
+dbg_macro = "warn"
+doc_markdown = "warn"
+exhaustive_enums = "warn"
+exhaustive_structs = "warn"
+expect_used = "warn"
+fn_params_excessive_bools = "warn"
+future_not_send = "warn"
+implicit_hasher = "warn"
+missing_docs_in_private_items = "warn"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+module_name_repetitions = "warn"
+multiple_crate_versions = "warn"
+must_use_candidate = "warn"
+nursery = { level = "warn", priority = -1 }
+option_if_let_else = "warn"
+panic = "warn"
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+print_stderr = "warn"
+print_stdout = "warn"
+shadow_reuse = "warn"
+shadow_same = "warn"
+shadow_unrelated = "warn"
+significant_drop_tightening = "warn"
+similar_names = "warn"
+struct_excessive_bools = "warn"
+style = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+todo = "warn"
+too_many_lines = "warn"
+unimplemented = "warn"
+unwrap_in_result = "warn"
+unwrap_used = "warn"
+cargo_common_metadata = "warn"
