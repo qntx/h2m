@@ -292,7 +292,7 @@ impl Fetcher {
     pub async fn fetch_many_streaming<S, F>(&self, urls: &[S], mut on_result: F)
     where
         S: AsRef<str> + Sync,
-        F: FnMut(Result<FetchResult, FetchError>) + Send,
+        F: FnMut(Result<FetchResult, FetchError>),
     {
         let sem = Arc::new(Semaphore::new(self.concurrency));
         let (tx, mut rx) =

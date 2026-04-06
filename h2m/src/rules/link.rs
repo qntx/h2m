@@ -1,5 +1,7 @@
 //! Link (`<a>`) conversion rule.
 
+use std::borrow::Cow;
+
 use scraper::ElementRef;
 
 use crate::context::Context;
@@ -42,7 +44,7 @@ impl Rule for Link {
             if fallback.is_empty() {
                 return Action::Replace(String::new());
             }
-            fallback
+            Cow::Owned(fallback)
         } else {
             escaped_content
         };
@@ -96,12 +98,14 @@ fn build_reference_link(display: &str, href: &str, title_part: &str, ctx: &mut C
 }
 
 /// Escapes newlines in link content so multi-line text works inside `[...]`.
-fn escape_multiline(content: &str) -> String {
+///
+/// Returns a borrowed [`Cow`] when no escaping is needed.
+fn escape_multiline(content: &str) -> Cow<'_, str> {
     let trimmed = content.trim();
     if !trimmed.contains('\n') {
-        return trimmed.to_owned();
+        return Cow::Borrowed(trimmed);
     }
-    trimmed.replace('\n', "\\\n")
+    Cow::Owned(trimmed.replace('\n', "\\\n"))
 }
 
 /// Extracts the URL from a markdown image `![alt](url)`.

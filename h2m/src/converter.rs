@@ -195,6 +195,7 @@ impl ConverterBuilder {
 /// let md = converter.convert("<p><a href=\"/about\">About</a></p>");
 /// assert_eq!(md, "[About](https://example.com/about)");
 /// ```
+#[derive(Clone)]
 pub struct Converter {
     /// Conversion options.
     options: Options,
@@ -206,18 +207,6 @@ pub struct Converter {
     remove_tags: HashSet<String>,
     /// Base domain for resolving relative URLs.
     domain: Option<String>,
-}
-
-impl Clone for Converter {
-    fn clone(&self) -> Self {
-        Self {
-            options: self.options,
-            rules: self.rules.clone(),
-            keep_tags: self.keep_tags.clone(),
-            remove_tags: self.remove_tags.clone(),
-            domain: self.domain.clone(),
-        }
-    }
 }
 
 impl std::fmt::Debug for Converter {
