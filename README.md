@@ -58,6 +58,11 @@ h2m https://example.com
 # Extract only the article content
 h2m --selector article https://blog.example.com/post
 
+# Smart readable extraction (strips nav, footer, aside, etc.)
+h2m --readable https://blog.example.com/post
+# Short form
+h2m -r https://blog.example.com/post
+
 # Local file with GFM + referenced links, save to file
 h2m --gfm --link-style referenced page.html -o output.md
 
@@ -73,6 +78,9 @@ h2m --json url1 url2 url3
 # Batch from file with concurrency control
 h2m --json --urls urls.txt -j 8 --delay 100
 
+# Custom User-Agent
+h2m --user-agent "MyBot/1.0" https://example.com
+
 # All formatting options
 h2m --gfm --heading-style setext --strong underscores --fence tilde page.html
 ```
@@ -85,7 +93,11 @@ Single URL produces a pretty-printed JSON object:
 {
   "url": "https://example.com",
   "domain": "example.com",
+  "status_code": 200,
+  "content_type": "text/html; charset=UTF-8",
   "title": "Example Domain",
+  "language": "en",
+  "description": "This domain is for use in illustrative examples.",
   "markdown": "# Example Domain\n\n...",
   "elapsed_ms": 234,
   "content_length": 1256
@@ -116,10 +128,10 @@ let converter = Converter::builder()
     .build();
 
 let md = converter.convert(r#"<a href="/about">About</a>"#);
-assert_eq!(md, "[About](http://example.com/about)");
+assert_eq!(md, "[About](https://example.com/about)");
 ```
 
-### Async Fetching (feature = `"fetch"`)
+### Async Fetching
 
 Enable the `fetch` feature for async HTTP fetching with built-in concurrency control, rate limiting, and streaming output:
 
@@ -148,19 +160,13 @@ fetcher.fetch_many_streaming(&urls, |result| {
 
 ## Design
 
-- **CommonMark compliant** — headings, paragraphs, emphasis, strong, code blocks, links, images, lists, blockquotes, horizontal rules, line breaks
-- **GFM extensions** — tables (with column alignment), strikethrough, task lists
-- **Reference-style links** — full (`[text][1]`), collapsed (`[text][]`), and shortcut (`[text]`) styles
-- **Domain resolution** — resolve relative URLs to absolute via the `url` crate (WHATWG compliant)
-- **Plugin architecture** — extend with custom rules via the `Rule` trait; register with `Converter::builder().use_plugin()`
-- **Async HTTP pipeline** — `tokio` + `reqwest` with semaphore-based concurrency, rate limiting, and streaming NDJSON output (feature-gated)
-- **JSON / NDJSON output** — structured output for agent/programmatic consumption; single result → JSON, batch → NDJSON
-- **HTML utilities** — `html::extract_title()`, `html::extract_links()`, `html::select()` for metadata extraction without full conversion
-- **Keep / Remove** — selectively preserve raw HTML tags or strip them entirely
-- **CSS selector extraction** — `--selector` flag to convert only matching elements
-- **Zero-copy fast paths** — `Cow<str>` for escaping and whitespace normalization; no allocation when input needs no transformation
-- **`Send + Sync`** — `Converter` is immutable after build, safe to share across threads (compile-time assertion)
-- **Strict linting** — Clippy `pedantic` + `nursery` + `correctness` (deny), zero warnings
+- **CommonMark + GFM** — full spec compliance with tables, strikethrough, task lists, reference-style links
+- **Plugin architecture** — extend with custom rules via the `Rule` trait
+- **Async batch pipeline** — `tokio` + `reqwest`, semaphore concurrency, streaming NDJSON (feature-gated)
+- **JSON output** — structured result with rich metadata (status, language, description, og:image) for agent/programmatic consumption
+- **Smart readable extraction** — two-phase content detection: semantic selectors → noise stripping (`nav`, `footer`, `aside`, `header`, ARIA roles)
+- **Smart fetching** — configurable User-Agent, HTML meta-refresh redirect following
+- **Zero-copy fast paths** — `Cow<str>` escaping, zero `unsafe`, `Send + Sync`
 
 ## Conversion Examples
 

@@ -153,7 +153,7 @@ impl ConverterBuilder {
     /// Sets the base domain for resolving relative URLs to absolute.
     ///
     /// For example, setting `"example.com"` will turn `/page.html` into
-    /// `http://example.com/page.html`.
+    /// `https://example.com/page.html`.
     #[must_use]
     pub fn domain(mut self, domain: impl Into<String>) -> Self {
         self.domain = Some(domain.into());
@@ -193,7 +193,7 @@ impl ConverterBuilder {
 ///     .build();
 ///
 /// let md = converter.convert("<p><a href=\"/about\">About</a></p>");
-/// assert_eq!(md, "[About](http://example.com/about)");
+/// assert_eq!(md, "[About](https://example.com/about)");
 /// ```
 pub struct Converter {
     /// Conversion options.
@@ -322,7 +322,9 @@ impl Converter {
         let tag = element.value().name();
 
         // Check if this tag should be removed entirely.
-        if self.remove_tags.contains(tag) || matches!(tag, "script" | "style" | "noscript") {
+        if self.remove_tags.contains(tag)
+            || matches!(tag, "script" | "style" | "noscript" | "head" | "iframe")
+        {
             return String::new();
         }
 

@@ -5,7 +5,6 @@ mod code_block;
 mod emphasis;
 mod heading;
 mod horizontal_rule;
-mod iframe;
 mod image;
 mod inline_code;
 mod line_break;
@@ -97,6 +96,5 @@ impl Plugin for CommonMark {
         builder.add_rule(inline_code::InlineCode);
         builder.add_rule(link::Link);
         builder.add_rule(image::Image);
-        builder.add_rule(iframe::Iframe);
     }
 }

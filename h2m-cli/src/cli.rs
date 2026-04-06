@@ -86,9 +86,21 @@ pub struct Cli {
     pub domain: Option<String>,
 
     /// CSS selector to extract before converting (e.g. "article", "main",
-    /// "#content").
-    #[arg(short, long)]
+    /// "#content"). Mutually exclusive with --readable.
+    #[arg(short, long, conflicts_with = "readable")]
     pub selector: Option<String>,
+
+    /// Smart readable content extraction.
+    /// Phase 1: tries semantic selectors (article, main, [role="main"], …).
+    /// Phase 2: strips noise elements (nav, footer, aside, …) if no
+    /// semantic wrapper is found.
+    /// Mutually exclusive with --selector.
+    #[arg(short = 'r', long, conflicts_with = "selector")]
+    pub readable: bool,
+
+    /// Custom User-Agent header for HTTP requests.
+    #[arg(long)]
+    pub user_agent: Option<String>,
 
     /// Output file (writes to stdout if omitted, ignored in batch mode).
     #[arg(short, long)]

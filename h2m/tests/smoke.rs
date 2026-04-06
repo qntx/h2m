@@ -456,10 +456,10 @@ fn line_break_hard() {
 }
 
 #[test]
-fn iframe_rendered_as_link() {
+fn iframe_removed() {
     assert_eq!(
         convert(r#"<iframe src="https://example.com/embed"></iframe>"#),
-        "[iframe](https://example.com/embed)"
+        ""
     );
 }
 
@@ -476,7 +476,7 @@ fn domain_resolves_relative_image() {
     let c = with_domain("example.com");
     assert_eq!(
         c.convert(r#"<img src="/img/cat.png" alt="cat"/>"#),
-        "![cat](http://example.com/img/cat.png)"
+        "![cat](https://example.com/img/cat.png)"
     );
 }
 
@@ -485,7 +485,7 @@ fn domain_resolves_relative_link() {
     let c = with_domain("example.com");
     assert_eq!(
         c.convert(r#"<a href="/about">About</a>"#),
-        "[About](http://example.com/about)"
+        "[About](https://example.com/about)"
     );
 }
 
@@ -508,12 +508,9 @@ fn domain_with_protocol_preserves_scheme() {
 }
 
 #[test]
-fn domain_resolves_relative_iframe() {
+fn iframe_with_domain_removed() {
     let c = with_domain("example.com");
-    assert_eq!(
-        c.convert(r#"<iframe src="/embed/video"></iframe>"#),
-        "[iframe](http://example.com/embed/video)"
-    );
+    assert_eq!(c.convert(r#"<iframe src="/embed/video"></iframe>"#), "");
 }
 
 #[test]
@@ -778,4 +775,51 @@ line2</a></p>"#,
     );
     assert!(md.contains("[line1"));
     assert!(md.contains("](https://example.com)"));
+}
+
+#[test]
+fn head_elements_not_in_output() {
+    let html = r#"<html><head><title>Page Title</title><meta name="description" content="desc"></head><body><p>Hello</p></body></html>"#;
+    let md = convert(html);
+    assert!(
+        !md.contains("Page Title"),
+        "title should not leak into body"
+    );
+    assert_eq!(md, "Hello");
+}
+
+#[test]
+fn extract_links_with_base_resolves_relative() {
+    let links = h2m::html::extract_links_with_base(
+        r#"<a href="/about">About</a><a href="https://other.com">Other</a>"#,
+        "https://example.com/page",
+    );
+    assert_eq!(
+        links,
+        vec!["https://example.com/about", "https://other.com"]
+    );
+}
+
+#[test]
+fn extract_links_without_base_returns_raw() {
+    let links = h2m::html::extract_links(r#"<a href="/about">About</a>"#);
+    assert_eq!(links, vec!["/about"]);
+}
+
+#[test]
+fn domain_bare_defaults_to_https() {
+    let c = with_domain("example.com");
+    assert_eq!(
+        c.convert(r#"<a href="/page">Link</a>"#),
+        "[Link](https://example.com/page)"
+    );
+}
+
+#[test]
+fn domain_explicit_http_preserved() {
+    let c = with_domain("http://example.com");
+    assert_eq!(
+        c.convert(r#"<a href="/page">Link</a>"#),
+        "[Link](http://example.com/page)"
+    );
 }

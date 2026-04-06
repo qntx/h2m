@@ -109,7 +109,7 @@ impl Context {
         let base_str = if domain.contains("://") {
             Cow::Borrowed(domain)
         } else {
-            Cow::Owned(format!("http://{domain}"))
+            Cow::Owned(format!("https://{domain}"))
         };
 
         let Ok(base) = url::Url::parse(&base_str) else {
@@ -273,13 +273,19 @@ mod tests {
     #[test]
     fn resolve_relative_with_bare_domain() {
         let ctx = make_ctx(Some("example.com".to_owned()));
-        assert_eq!(ctx.resolve_url("/about"), "http://example.com/about");
+        assert_eq!(ctx.resolve_url("/about"), "https://example.com/about");
     }
 
     #[test]
     fn resolve_relative_with_protocol() {
         let ctx = make_ctx(Some("https://example.com".to_owned()));
         assert_eq!(ctx.resolve_url("/about"), "https://example.com/about");
+    }
+
+    #[test]
+    fn resolve_bare_domain_uses_https() {
+        let ctx = make_ctx(Some("example.com".to_owned()));
+        assert_eq!(ctx.resolve_url("/path"), "https://example.com/path");
     }
 
     #[test]

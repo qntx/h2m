@@ -73,6 +73,7 @@ h2m [OPTIONS] [INPUT]...
 | `--no-escape`      |       | Disable markdown character escaping                              | off         |
 | `--domain`         |       | Base domain for resolving relative URLs (auto-detected for URLs) | auto        |
 | `--selector`       | `-s`  | CSS selector to extract before converting                        | none        |
+| `--readable`       | `-r`  | Smart readable extraction (semantic selectors → noise stripping) | off         |
 | `--output`         | `-o`  | Output file path (writes to stdout if omitted)                   | stdout      |
 
 ## Usage Examples
@@ -141,6 +142,25 @@ h2m --json --timeout 60 https://slow-site.com
 h2m --json --urls urls.txt
 ```
 
+### Smart Readable Extraction
+
+```bash
+# Smart extraction: strips nav, footer, aside, header, etc.
+h2m --readable https://blog.example.com/post
+h2m -r https://blog.example.com/post
+
+# Works with JSON output
+h2m --readable --json https://docs.rs/scraper
+
+# Works with stdin
+curl -s https://example.com | h2m --readable
+```
+
+`--readable` uses a two-phase approach:
+
+1. **Phase 1**: Tries semantic selectors (`article`, `main`, `[role="main"]`, …)
+2. **Phase 2**: If no semantic wrapper found, strips noise elements (`nav`, `footer`, `aside`, `header`, `[role="navigation"]`, `[role="banner"]`, `[role="contentinfo"]`, `[role="complementary"]`, `[role="search"]`, `[aria-hidden="true"]`)
+
 ### CSS Selector Extraction
 
 ```bash
@@ -153,6 +173,8 @@ h2m --selector '#content' https://example.com
 # Extract main element
 curl -s https://example.com | h2m --selector main
 ```
+
+`--selector` and `--readable` are mutually exclusive.
 
 ### GFM Extensions
 
@@ -198,7 +220,7 @@ h2m --link-style referenced --link-ref shortcut page.html
 ```bash
 # Auto-detected when input is a URL
 h2m https://example.com
-# relative "/about" becomes "http://example.com/about"
+# relative "/about" becomes "https://example.com/about"
 
 # Manually set for local files or stdin
 h2m --domain example.com page.html
@@ -233,7 +255,7 @@ h2m --selector article --gfm https://blog.example.com/post -o article.md
 | `<blockquote>`                           | `> quoted text`                           |
 | `<hr>`                                   | `---`                                     |
 | `<br>`                                   | Hard line break                           |
-| `<iframe>`                               | `[iframe](url)`                           |
+| `<iframe>`                               | Removed (never useful in markdown)        |
 
 ### GFM Extensions (with `--gfm`)
 
@@ -256,7 +278,7 @@ h2m --selector article --gfm https://blog.example.com/post -o article.md
 1. **Use `--json` for structured output** — always prefer `--json` when consuming h2m output programmatically. It provides URL, domain, title, markdown, links, timing, and content length in a single JSON object. For batch operations, output is NDJSON (one JSON per line) for easy streaming.
 2. **Use `--json --extract-links`** to get both the converted markdown and all page links in one call — useful for crawling or building site maps.
 3. **Batch multiple URLs** by passing them as arguments or via `--urls file.txt`. Requests run concurrently (default 4, configurable with `-j`). Use `--delay` for rate limiting.
-4. **Use `--selector` for web scraping** to extract only the relevant content (e.g. `article`, `main`, `#content`) and avoid converting navigation, footers, and boilerplate.
+4. **Use `--readable` for web scraping** to automatically extract main content and strip navigation, footers, and boilerplate. Use `--selector` when you need precise control over which element to extract.
 5. **Use `--gfm`** when the source HTML contains tables, strikethrough, or checkboxes — without it, these elements are passed through as raw HTML or ignored.
 6. **Domain is auto-detected** when the input is a URL. Only set `--domain` manually when piping HTML from stdin or converting local files with relative URLs.
 7. **Reference-style links** (`--link-style referenced`) produce cleaner output for documents with many links, keeping the prose readable and link URLs in a footer section.

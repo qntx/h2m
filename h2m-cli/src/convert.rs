@@ -26,6 +26,11 @@ fn build_fetcher(cli: &Cli) -> Result<Fetcher, CliError> {
     }
     if let Some(s) = &cli.selector {
         builder = builder.selector(s);
+    } else if cli.readable {
+        builder = builder.readable(true);
+    }
+    if let Some(ua) = &cli.user_agent {
+        builder = builder.user_agent(ua);
     }
 
     Ok(builder.build()?)
@@ -108,9 +113,12 @@ fn run_stdin(cli: &Cli) -> Result<(), CliError> {
     let mut buf = String::new();
     io::stdin().read_to_string(&mut buf)?;
 
-    let html = match &cli.selector {
-        Some(sel) => h2m::html::select(&buf, sel),
-        None => buf,
+    let html = if let Some(sel) = &cli.selector {
+        h2m::html::select(&buf, sel)
+    } else if cli.readable {
+        h2m::html::readable_content(&buf)
+    } else {
+        buf
     };
     let md = converter.convert(&html);
     output::emit_single_markdown(cli, &md);

@@ -25,7 +25,7 @@
 //!     .build();
 //!
 //! let md = converter.convert(r#"<a href="/about">About</a>"#);
-//! assert_eq!(md, "[About](http://example.com/about)");
+//! assert_eq!(md, "[About](https://example.com/about)");
 //! ```
 //!
 //! ## HTML utilities
@@ -36,31 +36,6 @@
 //! ```
 //! let title = h2m::html::extract_title("<title>Hello</title>");
 //! assert_eq!(title.as_deref(), Some("Hello"));
-//! ```
-//!
-//! ## Async fetching (feature = `"fetch"`)
-//!
-//! Enable the **`fetch`** Cargo feature for async HTTP fetching with
-//! built-in concurrency control, rate limiting, and streaming output:
-//!
-//! ```toml
-//! [dependencies]
-//! h2m = { version = "*", features = ["fetch"] }
-//! ```
-//!
-//! ```no_run
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! use h2m::fetch::Fetcher;
-//!
-//! let fetcher = Fetcher::builder()
-//!     .concurrency(8)
-//!     .gfm(true)
-//!     .build()?;
-//!
-//! let result = fetcher.fetch("https://example.com").await?;
-//! println!("{}", result.markdown);
-//! # Ok(())
-//! # }
 //! ```
 
 pub mod html;
