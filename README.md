@@ -2,22 +2,69 @@
 
 # H2M
 
-A fast, extensible HTML-to-Markdown converter for Rust.
+[![Crates.io][crates-badge]][crates-url]
+[![Docs.rs][docs-badge]][docs-url]
+[![CI][ci-badge]][ci-url]
+[![License][license-badge]][license-url]
+[![Rust][rust-badge]][rust-url]
 
-## Features
+[crates-badge]: https://img.shields.io/crates/v/h2m.svg
+[crates-url]: https://crates.io/crates/h2m
+[docs-badge]: https://img.shields.io/docsrs/h2m.svg
+[docs-url]: https://docs.rs/h2m
+[ci-badge]: https://github.com/qntx/h2m/actions/workflows/rust.yml/badge.svg
+[ci-url]: https://github.com/qntx/h2m/actions/workflows/rust.yml
+[license-badge]: https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg
+[license-url]: LICENSE-MIT
+[rust-badge]: https://img.shields.io/badge/rust-edition%202024-orange.svg
+[rust-url]: https://doc.rust-lang.org/edition-guide/
 
-- **CommonMark compliant** — headings, paragraphs, emphasis, strong, code, links, images, lists, blockquotes, horizontal rules, line breaks
-- **GFM extensions** — tables (with alignment), strikethrough, task lists
-- **Reference-style links** — full, collapsed, and shortcut styles
-- **Domain resolution** — resolve relative URLs to absolute
-- **Plugin architecture** — extend with custom rules via the `Rule` trait
-- **Keep/Remove** — selectively preserve or strip HTML tags
-- **Zero-copy fast paths** — `Cow<str>` for escaping and whitespace normalization
-- **`Send + Sync`** — safe to share across threads
+**Fast, extensible HTML-to-Markdown converter for Rust — CommonMark + GFM, plugin architecture, zero `unsafe`.**
 
-## Quick start
+H2M converts HTML into clean Markdown with full CommonMark compliance and GitHub Flavored Markdown extensions. It uses a plugin-based rule system, supports reference-style links, relative URL resolution, and ships with a CLI that can fetch and convert web pages directly.
 
-### Library
+## Quick Start
+
+### Install the CLI
+
+**Shell** (macOS / Linux):
+
+```sh
+curl -fsSL https://sh.qntx.fun/h2m | sh
+```
+
+**PowerShell** (Windows):
+
+```powershell
+irm https://sh.qntx.fun/h2m/ps | iex
+```
+
+Or via Cargo:
+
+```bash
+cargo install h2m-cli
+```
+
+### CLI Usage
+
+```bash
+# Convert a URL directly
+h2m https://example.com
+
+# Extract only the article content
+h2m --selector article https://blog.example.com/post
+
+# Local file with GFM + referenced links, save to file
+h2m --gfm --link-style referenced page.html -o output.md
+
+# Pipe from stdin
+curl -s https://example.com | h2m --selector main
+
+# All formatting options
+h2m --gfm --heading-style setext --strong underscores --fence tilde page.html
+```
+
+### Library Usage
 
 ```rust
 // One-liner with CommonMark defaults
@@ -42,39 +89,18 @@ let md = converter.convert(r#"<a href="/about">About</a>"#).unwrap();
 assert_eq!(md, "[About](http://example.com/about)");
 ```
 
-### CLI
+## Design
 
-```sh
-# Convert a URL directly
-h2m https://example.com
-
-# Extract only the article content
-h2m --selector article https://blog.example.com/post
-
-# Local file with GFM + referenced links, save to file
-h2m --gfm --link-style referenced page.html -o output.md
-
-# Pipe from stdin
-curl -s https://example.com | h2m --selector main
-```
-
-Run `h2m --help` for all options.
-
-## Architecture
-
-```
-h2m (library)
-├── rules/          CommonMark built-in rules (heading, link, list, ...)
-├── plugins/        GFM extensions (table, strikethrough, task list)
-├── converter.rs    Builder + frozen converter + DOM traversal
-├── context.rs      Traversal state + list pre-pass
-├── escape.rs       Markdown character escaping
-├── whitespace.rs   Whitespace normalization
-└── utils.rs        DOM helpers + URL resolution
-
-h2m-cli (binary)
-└── main.rs         CLI with URL/file/stdin input, CSS selector, all options
-```
+- **CommonMark compliant** — headings, paragraphs, emphasis, strong, code blocks, links, images, lists, blockquotes, horizontal rules, line breaks
+- **GFM extensions** — tables (with column alignment), strikethrough, task lists
+- **Reference-style links** — full (`[text][1]`), collapsed (`[text][]`), and shortcut (`[text]`) styles
+- **Domain resolution** — resolve relative URLs to absolute via the `url` crate (WHATWG compliant)
+- **Plugin architecture** — extend with custom rules via the `Rule` trait; register with `Converter::builder().use_plugin()`
+- **Keep / Remove** — selectively preserve raw HTML tags or strip them entirely
+- **CSS selector extraction** — CLI `--selector` flag to convert only matching elements
+- **Zero-copy fast paths** — `Cow<str>` for escaping and whitespace normalization; no allocation when input needs no transformation
+- **`Send + Sync`** — `Converter` is immutable after build, safe to share across threads (compile-time assertion)
+- **Strict linting** — Clippy `pedantic` + `nursery` + `correctness` (deny), zero warnings
 
 ## License
 
