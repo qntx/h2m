@@ -1,4 +1,22 @@
 //! h2m — HTML to Markdown converter CLI.
+//!
+//! Supports URLs, files, and stdin as input sources.
+//!
+//! # Examples
+//!
+//! ```sh
+//! # Convert a URL directly
+//! h2m https://example.com
+//!
+//! # Convert a local file with GFM extensions
+//! h2m --gfm page.html
+//!
+//! # Pipe from curl, extract only <article>
+//! curl -s https://blog.example.com/post | h2m --selector article
+//!
+//! # Save output to a file
+//! h2m https://example.com -o output.md
+//! ```
 
 #![allow(clippy::print_stderr)]
 
@@ -10,21 +28,24 @@ use std::process;
 use clap::{Parser, ValueEnum};
 
 /// Convert HTML to Markdown.
+///
+/// INPUT can be a URL (http/https), a file path, or "-" for stdin.
+/// When omitted, reads from stdin.
 #[derive(Parser, Debug)]
-#[command(name = "h2m", version, about)]
+#[command(name = "h2m", version, about, long_about = None)]
 struct Cli {
-    /// HTML file to convert (reads stdin if omitted or "-").
-    input: Option<PathBuf>,
+    /// URL, file path, or "-" for stdin.
+    input: Option<String>,
 
     /// Enable GFM extensions (tables, strikethrough, task lists).
-    #[arg(long)]
+    #[arg(short, long)]
     gfm: bool,
 
     /// Heading style.
     #[arg(long, value_enum, default_value_t = HeadingStyle::Atx)]
     heading_style: HeadingStyle,
 
-    /// Bullet character for unordered lists.
+    /// Bullet character for unordered lists ('-', '+', or '*').
     #[arg(long, default_value = "-")]
     bullet: char,
 
@@ -32,9 +53,39 @@ struct Cli {
     #[arg(long, value_enum, default_value_t = FenceStyle::Backtick)]
     fence: FenceStyle,
 
+    /// Emphasis delimiter ('*' or '_').
+    #[arg(long, default_value = "*")]
+    em: char,
+
+    /// Strong delimiter ("**" or "__").
+    #[arg(long, default_value = "**")]
+    strong: Strong,
+
+    /// Horizontal rule string.
+    #[arg(long, default_value = "---")]
+    hr: String,
+
+    /// Link style.
+    #[arg(long, value_enum, default_value_t = LinkStyleArg::Inlined)]
+    link_style: LinkStyleArg,
+
+    /// Reference link style (only used with --link-style=referenced).
+    #[arg(long, value_enum, default_value_t = LinkRefArg::Full)]
+    link_ref: LinkRefArg,
+
     /// Disable markdown character escaping.
     #[arg(long)]
     no_escape: bool,
+
+    /// Base domain for resolving relative URLs (e.g. "example.com").
+    /// Auto-detected when input is a URL.
+    #[arg(long)]
+    domain: Option<String>,
+
+    /// CSS selector to extract before converting (e.g. "article", "main",
+    /// "#content").
+    #[arg(short, long)]
+    selector: Option<String>,
 
     /// Output file (writes to stdout if omitted).
     #[arg(short, long)]
@@ -59,36 +110,58 @@ enum FenceStyle {
     Tilde,
 }
 
+/// Link rendering style.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum LinkStyleArg {
+    /// Inline links: `[text](url)`.
+    Inlined,
+    /// Reference-style: `[text][id]` with footer definitions.
+    Referenced,
+}
+
+/// Reference link identifier style.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum LinkRefArg {
+    /// Full reference: `[text][1]`.
+    Full,
+    /// Collapsed: `[text][]`.
+    Collapsed,
+    /// Shortcut: `[text]`.
+    Shortcut,
+}
+
+/// Strong delimiter parsed from CLI.
+#[derive(Debug, Clone)]
+struct Strong(String);
+
+impl Default for Strong {
+    fn default() -> Self {
+        Self("**".to_owned())
+    }
+}
+
+impl std::str::FromStr for Strong {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "**" | "__" => Ok(Self(s.to_owned())),
+            _ => Err(format!(
+                "invalid strong delimiter: {s:?} (expected \"**\" or \"__\")"
+            )),
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
 
-    let html = match &cli.input {
-        Some(path) if path.to_str() != Some("-") => fs::read_to_string(path).unwrap_or_else(|e| {
-            eprintln!("error: cannot read {}: {e}", path.display());
-            process::exit(1);
-        }),
-        _ => {
-            let mut buf = String::new();
-            io::stdin().read_to_string(&mut buf).unwrap_or_else(|e| {
-                eprintln!("error: cannot read stdin: {e}");
-                process::exit(1);
-            });
-            buf
-        }
-    };
+    let (raw_html, auto_domain) = read_input(&cli);
 
-    let mut options = h2m::Options::default();
+    let html = apply_selector(&cli, &raw_html);
 
-    if matches!(cli.heading_style, HeadingStyle::Setext) {
-        options.heading_style = h2m::HeadingStyle::Setext;
-    }
-    options.bullet_marker = cli.bullet;
-    if matches!(cli.fence, FenceStyle::Tilde) {
-        options.fence = h2m::Fence::Tilde;
-    }
-    if cli.no_escape {
-        options.escape_mode = h2m::EscapeMode::Disabled;
-    }
+    let options = build_options(&cli);
+
+    let domain = cli.domain.as_deref().or(auto_domain.as_deref());
 
     let mut builder = h2m::Converter::builder()
         .options(options)
@@ -98,6 +171,10 @@ fn main() {
         builder = builder.use_plugin(h2m::plugins::Gfm);
     }
 
+    if let Some(d) = domain {
+        builder = builder.domain(d);
+    }
+
     let converter = builder.build();
 
     let md = converter.convert(&html).unwrap_or_else(|e| {
@@ -105,11 +182,143 @@ fn main() {
         process::exit(1);
     });
 
+    write_output(&cli, &md);
+}
+
+/// Determines whether the input looks like a URL.
+fn is_url(input: &str) -> bool {
+    input.starts_with("http://") || input.starts_with("https://")
+}
+
+/// Extracts the domain (host) from a URL string.
+fn extract_domain(url: &str) -> Option<String> {
+    let without_scheme = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))?;
+    let host = without_scheme
+        .split('/')
+        .next()?
+        .split('?')
+        .next()?
+        .split('#')
+        .next()?;
+    if host.is_empty() {
+        None
+    } else {
+        Some(host.to_owned())
+    }
+}
+
+/// Reads HTML from URL, file, or stdin. Returns `(html, auto_domain)`.
+fn read_input(cli: &Cli) -> (String, Option<String>) {
+    match &cli.input {
+        Some(input) if is_url(input) => {
+            let auto_domain = extract_domain(input);
+            eprintln!("Fetching {input}...");
+            let body = ureq::get(input)
+                .call()
+                .unwrap_or_else(|e| {
+                    eprintln!("error: failed to fetch {input}: {e}");
+                    process::exit(1);
+                })
+                .into_body()
+                .read_to_string()
+                .unwrap_or_else(|e| {
+                    eprintln!("error: failed to read response body: {e}");
+                    process::exit(1);
+                });
+            (body, auto_domain)
+        }
+        Some(input) if input != "-" => {
+            let path = PathBuf::from(input);
+            let html = fs::read_to_string(&path).unwrap_or_else(|e| {
+                eprintln!("error: cannot read {}: {e}", path.display());
+                process::exit(1);
+            });
+            (html, None)
+        }
+        _ => {
+            let mut buf = String::new();
+            io::stdin().read_to_string(&mut buf).unwrap_or_else(|e| {
+                eprintln!("error: cannot read stdin: {e}");
+                process::exit(1);
+            });
+            (buf, None)
+        }
+    }
+}
+
+/// If `--selector` is given, extracts matching elements' inner HTML.
+fn apply_selector(cli: &Cli, html: &str) -> String {
+    let Some(sel) = &cli.selector else {
+        return html.to_owned();
+    };
+
+    let document = scraper::Html::parse_document(html);
+    let selector = scraper::Selector::parse(sel).unwrap_or_else(|e| {
+        eprintln!("error: invalid CSS selector {sel:?}: {e}");
+        process::exit(1);
+    });
+
+    let mut extracted = String::new();
+    for element in document.select(&selector) {
+        extracted.push_str(&element.inner_html());
+    }
+
+    if extracted.is_empty() {
+        eprintln!("warning: selector {sel:?} matched no elements, converting full document");
+        return html.to_owned();
+    }
+
+    extracted
+}
+
+/// Builds `h2m::Options` from CLI arguments.
+fn build_options(cli: &Cli) -> h2m::Options {
+    let mut options = h2m::Options::default();
+
+    if matches!(cli.heading_style, HeadingStyle::Setext) {
+        options.heading_style = h2m::HeadingStyle::Setext;
+    }
+
+    options.bullet_marker = cli.bullet;
+
+    if matches!(cli.fence, FenceStyle::Tilde) {
+        options.fence = h2m::Fence::Tilde;
+    }
+
+    options.em_delimiter = cli.em;
+
+    match cli.strong.0.as_str() {
+        "__" => options.strong_delimiter = "__",
+        _ => options.strong_delimiter = "**",
+    }
+
+    if cli.no_escape {
+        options.escape_mode = h2m::EscapeMode::Disabled;
+    }
+
+    if matches!(cli.link_style, LinkStyleArg::Referenced) {
+        options.link_style = h2m::LinkStyle::Referenced;
+    }
+
+    match cli.link_ref {
+        LinkRefArg::Full => options.link_reference_style = h2m::LinkReferenceStyle::Full,
+        LinkRefArg::Collapsed => options.link_reference_style = h2m::LinkReferenceStyle::Collapsed,
+        LinkRefArg::Shortcut => options.link_reference_style = h2m::LinkReferenceStyle::Shortcut,
+    }
+
+    options
+}
+
+/// Writes the markdown output to file or stdout.
+fn write_output(cli: &Cli, md: &str) {
     if let Some(path) = &cli.output {
-        fs::write(path, &md).unwrap_or_else(|e| {
+        fs::write(path, md).unwrap_or_else(|e| {
             eprintln!("error: cannot write {}: {e}", path.display());
             process::exit(1);
         });
+        eprintln!("Written to {}", path.display());
     } else {
         let stdout = io::stdout();
         let mut out = stdout.lock();
