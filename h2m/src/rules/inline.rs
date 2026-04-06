@@ -2,7 +2,7 @@
 
 use scraper::ElementRef;
 
-use crate::context::{self as ctx, Context};
+use crate::context::Context;
 use crate::rule::{Action, Rule};
 use crate::utils;
 
@@ -66,7 +66,7 @@ impl Rule for InlineCodeRule {
 
     fn apply(&self, content: &str, element: &ElementRef<'_>, _ctx: &Context) -> Action {
         // If inside a <pre>, let the code block rule handle it.
-        if ctx::has_ancestor(element, "pre") {
+        if utils::has_ancestor(element, "pre") {
             return Action::Skip;
         }
 

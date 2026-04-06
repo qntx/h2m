@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 
 use ego_tree::NodeId;
-use scraper::ElementRef;
 
 use crate::options::Options;
 
@@ -57,27 +56,4 @@ impl Context {
     pub fn list_metadata(&self, id: NodeId) -> Option<&ListMetadata> {
         self.list_metadata.get(&id)
     }
-}
-
-/// Returns the value of an attribute on an element.
-#[inline]
-#[must_use]
-pub fn attr<'a>(element: &'a ElementRef<'_>, name: &str) -> Option<&'a str> {
-    element.value().attr(name)
-}
-
-/// Returns `true` if the given element has an ancestor with the specified tag
-/// name.
-#[must_use]
-pub fn has_ancestor(element: &ElementRef<'_>, target_tag: &str) -> bool {
-    let mut current = element.parent();
-    while let Some(parent) = current {
-        if let Some(el) = parent.value().as_element()
-            && el.name() == target_tag
-        {
-            return true;
-        }
-        current = parent.parent();
-    }
-    false
 }

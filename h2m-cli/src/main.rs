@@ -80,14 +80,14 @@ fn main() {
     let mut options = h2m::Options::default();
 
     if matches!(cli.heading_style, HeadingStyle::Setext) {
-        options.heading_style = h2m::options::HeadingStyle::Setext;
+        options.heading_style = h2m::HeadingStyle::Setext;
     }
     options.bullet_marker = cli.bullet;
     if matches!(cli.fence, FenceStyle::Tilde) {
-        options.fence = h2m::options::Fence::Tilde;
+        options.fence = h2m::Fence::Tilde;
     }
     if cli.no_escape {
-        options.escape_mode = h2m::options::EscapeMode::Disabled;
+        options.escape_mode = h2m::EscapeMode::Disabled;
     }
 
     let mut builder = h2m::Converter::builder()

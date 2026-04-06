@@ -2,7 +2,7 @@
 
 # H2M
 
-HTML to Markdown converter.
+A fast, extensible HTML-to-Markdown converter for Rust.
 
 ## License
 

@@ -79,13 +79,11 @@ fn escape_line_start(text: &str) -> Option<String> {
     }
 
     // Ordered list: "1. ", "2. ", etc.
-    if let Some(first) = text.chars().next()
-        && first.is_ascii_digit()
-    {
-        let digits: String = text.chars().take_while(char::is_ascii_digit).collect();
-        let rest = &text[digits.len()..];
+    if text.as_bytes().first().is_some_and(u8::is_ascii_digit) {
+        let digit_len = text.bytes().take_while(u8::is_ascii_digit).count();
+        let rest = &text[digit_len..];
         if rest.starts_with(". ") || rest.starts_with(") ") {
-            return Some(format!("{digits}\\{}", &rest[..2]));
+            return Some(format!("{}\\{}", &text[..digit_len], &rest[..2]));
         }
     }
 

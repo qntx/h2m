@@ -60,7 +60,7 @@ pub enum EscapeMode {
 /// Configuration options for the converter.
 ///
 /// Use [`Default::default()`] for sensible `CommonMark` defaults.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub struct Options {
     /// Heading rendering style.

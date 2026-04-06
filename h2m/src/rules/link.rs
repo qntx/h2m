@@ -2,8 +2,9 @@
 
 use scraper::ElementRef;
 
-use crate::context::{self as ctx, Context};
+use crate::context::Context;
 use crate::rule::{Action, Rule};
+use crate::utils;
 
 /// Handles `<a>` elements as inline links: `[text](href "title")`.
 #[derive(Debug, Clone, Copy)]
@@ -15,8 +16,8 @@ impl Rule for LinkRule {
     }
 
     fn apply(&self, content: &str, element: &ElementRef<'_>, _ctx: &Context) -> Action {
-        let href = ctx::attr(element, "href").unwrap_or("");
-        let title = ctx::attr(element, "title");
+        let href = utils::attr(element, "href").unwrap_or("");
+        let title = utils::attr(element, "title");
 
         // Skip empty links.
         if href.is_empty() && content.trim().is_empty() {

@@ -24,13 +24,14 @@
 //! assert_eq!(md, "~~old~~");
 //! ```
 
-pub mod converter;
-pub mod error;
-pub mod options;
-pub mod plugin;
 pub mod plugins;
-pub mod rule;
 pub mod rules;
+
+pub(crate) mod converter;
+pub(crate) mod error;
+pub(crate) mod options;
+pub(crate) mod plugin;
+pub(crate) mod rule;
 
 mod context;
 mod escape;
@@ -41,7 +42,7 @@ mod whitespace;
 pub use context::Context;
 pub use converter::{Converter, ConverterBuilder};
 pub use error::{Error, Result};
-pub use options::Options;
+pub use options::{CodeBlockStyle, EscapeMode, Fence, HeadingStyle, Options};
 pub use rule::{Action, Rule};
 
 /// Converts HTML to Markdown using default `CommonMark` settings.

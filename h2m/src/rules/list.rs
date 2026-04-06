@@ -2,8 +2,9 @@
 
 use scraper::ElementRef;
 
-use crate::context::{self as ctx, Context};
+use crate::context::Context;
 use crate::rule::{Action, Rule};
+use crate::utils;
 
 /// Handles `<ul>` and `<ol>` list wrapper elements.
 #[derive(Debug, Clone, Copy)]
@@ -20,7 +21,7 @@ impl Rule for ListRule {
             return Action::Skip;
         }
 
-        if ctx::has_ancestor(element, "li") {
+        if utils::has_ancestor(element, "li") {
             Action::Replace(format!("\n{trimmed}"))
         } else {
             Action::Replace(format!("\n\n{trimmed}\n\n"))

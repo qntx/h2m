@@ -1,7 +1,5 @@
 //! GFM table (`<table>`) conversion rules.
 
-#![allow(clippy::missing_docs_in_private_items)]
-
 use ego_tree::NodeRef;
 use scraper::ElementRef;
 use scraper::node::Node;
@@ -118,36 +116,45 @@ impl Rule for TableCellRule {
     }
 }
 
-// ── Internal types ───────────────────────────────────────────────────────
-
+/// Column alignment parsed from `align` attribute or `text-align` style.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Alignment {
+    /// No explicit alignment.
     None,
+    /// Left-aligned (`:---`).
     Left,
+    /// Center-aligned (`:---:`).
     Center,
+    /// Right-aligned (`---:`).
     Right,
 }
 
+/// A single table cell with its text content and alignment.
 #[derive(Debug, Clone)]
 struct TableCell {
+    /// The plain-text content of the cell.
     text: String,
+    /// The alignment of the cell's column.
     alignment: Alignment,
 }
 
+/// A row of table cells.
 #[derive(Debug, Clone)]
 struct TableRow {
+    /// Whether this row belongs to a `<thead>` or consists entirely of `<th>` cells.
     is_header: bool,
+    /// The cells in this row.
     cells: Vec<TableCell>,
 }
 
-// ── DOM walking ──────────────────────────────────────────────────────────
-
+/// Collects all rows from a `<table>` element.
 fn collect_rows(table: &ElementRef<'_>) -> Vec<TableRow> {
     let mut rows = Vec::new();
     collect_rows_recursive(table, &mut rows);
     rows
 }
 
+/// Recursively collects rows from table sections (`<thead>`, `<tbody>`, `<tfoot>`).
 fn collect_rows_recursive(parent: &ElementRef<'_>, rows: &mut Vec<TableRow>) {
     for child in parent.children() {
         if let Some(el) = child.value().as_element() {
@@ -165,6 +172,7 @@ fn collect_rows_recursive(parent: &ElementRef<'_>, rows: &mut Vec<TableRow>) {
     }
 }
 
+/// Collects cells from a `<tr>` element.
 fn collect_cells(tr: &ElementRef<'_>) -> TableRow {
     let mut cells = Vec::new();
     let mut all_th = true;
@@ -196,6 +204,7 @@ fn collect_cells(tr: &ElementRef<'_>) -> TableRow {
     }
 }
 
+/// Recursively collects raw text content from a DOM node.
 fn collect_text_content(node: &NodeRef<'_, Node>) -> String {
     let mut text = String::new();
     match node.value() {
@@ -209,6 +218,7 @@ fn collect_text_content(node: &NodeRef<'_, Node>) -> String {
     text
 }
 
+/// Parses column alignment from an `align` attribute or `text-align` CSS style.
 #[inline]
 fn parse_alignment(align: Option<&str>, style: Option<&str>) -> Alignment {
     if let Some(a) = align {
@@ -235,8 +245,7 @@ fn parse_alignment(align: Option<&str>, style: Option<&str>) -> Alignment {
     Alignment::None
 }
 
-// ── Formatting ───────────────────────────────────────────────────────────
-
+/// Writes a single row as a GFM pipe-table line.
 fn write_row(out: &mut String, row: &TableRow, col_widths: &[usize]) {
     out.push('|');
     for (i, width) in col_widths.iter().enumerate() {
@@ -250,6 +259,7 @@ fn write_row(out: &mut String, row: &TableRow, col_widths: &[usize]) {
     }
 }
 
+/// Writes the separator line between header and body rows.
 fn write_separator(out: &mut String, header_cells: &[TableCell], col_widths: &[usize]) {
     out.push('|');
     for (i, width) in col_widths.iter().enumerate() {

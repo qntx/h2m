@@ -2,8 +2,9 @@
 
 use scraper::ElementRef;
 
-use crate::context::{self as ctx, Context};
+use crate::context::Context;
 use crate::rule::{Action, Rule};
+use crate::utils;
 
 /// Handles `<input type="checkbox">` elements inside list items.
 #[derive(Debug, Clone, Copy)]
@@ -16,7 +17,7 @@ impl Rule for TaskListRule {
 
     fn apply(&self, _content: &str, element: &ElementRef<'_>, _ctx: &Context) -> Action {
         let is_checkbox =
-            ctx::attr(element, "type").is_some_and(|t| t.eq_ignore_ascii_case("checkbox"));
+            utils::attr(element, "type").is_some_and(|t| t.eq_ignore_ascii_case("checkbox"));
 
         if !is_checkbox {
             return Action::Skip;

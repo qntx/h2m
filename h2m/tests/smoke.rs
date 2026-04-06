@@ -4,8 +4,6 @@
 use h2m::convert;
 use pretty_assertions::assert_eq;
 
-// ── Headings ─────────────────────────────────────────────────────────────
-
 #[test]
 fn heading_and_paragraph() {
     let md = convert("<h1>Hello</h1><p>World</p>").unwrap();
@@ -27,7 +25,7 @@ fn heading_all_levels() {
 #[test]
 fn setext_headings() {
     let mut opts = h2m::Options::default();
-    opts.heading_style = h2m::options::HeadingStyle::Setext;
+    opts.heading_style = h2m::HeadingStyle::Setext;
     let converter = h2m::Converter::builder()
         .options(opts)
         .use_plugin(h2m::rules::CommonMark)
@@ -39,8 +37,6 @@ fn setext_headings() {
     assert!(md.contains("Sub\n---"));
     assert!(md.contains("### Three"));
 }
-
-// ── Inline formatting ────────────────────────────────────────────────────
 
 #[test]
 fn strong_and_em() {
@@ -60,8 +56,6 @@ fn inline_code_with_backticks() {
     assert_eq!(md, "``a`b`c``");
 }
 
-// ── Links & images ───────────────────────────────────────────────────────
-
 #[test]
 fn link() {
     let md = convert(r#"<p><a href="https://rust-lang.org">Rust</a></p>"#).unwrap();
@@ -80,8 +74,6 @@ fn image() {
     let md = convert(r#"<p><img src="cat.png" alt="A cat"/></p>"#).unwrap();
     assert_eq!(md, "![A cat](cat.png)");
 }
-
-// ── Lists ────────────────────────────────────────────────────────────────
 
 #[test]
 fn unordered_list() {
@@ -115,8 +107,6 @@ fn deeply_nested_list() {
     assert_eq!(md, "- 1\n  - 2\n    - 3");
 }
 
-// ── Blockquotes ──────────────────────────────────────────────────────────
-
 #[test]
 fn blockquote() {
     let md = convert("<blockquote><p>quoted text</p></blockquote>").unwrap();
@@ -129,8 +119,6 @@ fn nested_blockquote() {
     let md = convert(html).unwrap();
     assert!(md.contains("> > deep"));
 }
-
-// ── Code blocks ──────────────────────────────────────────────────────────
 
 #[test]
 fn code_block_with_language() {
@@ -147,8 +135,6 @@ fn code_block_fence_escalation() {
     assert!(md.starts_with("````"));
     assert!(md.contains("```\nsome code\n```"));
 }
-
-// ── Misc ─────────────────────────────────────────────────────────────────
 
 #[test]
 fn horizontal_rule() {
@@ -188,8 +174,6 @@ fn malformed_html() {
     assert!(md.contains("**bold**"));
 }
 
-// ── GFM ──────────────────────────────────────────────────────────────────
-
 #[test]
 fn gfm_strikethrough() {
     let md = h2m::convert_gfm("<p><del>removed</del></p>").unwrap();
@@ -224,8 +208,6 @@ fn gfm_task_list() {
     assert!(md.contains("done"));
     assert!(md.contains("todo"));
 }
-
-// ── HTML entities ────────────────────────────────────────────────────────
 
 #[test]
 fn html_entities_decoded() {

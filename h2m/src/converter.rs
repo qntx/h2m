@@ -1,6 +1,6 @@
 //! Core converter: builder, frozen converter, and traversal pipeline.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use ego_tree::NodeId;
@@ -14,8 +14,6 @@ use crate::plugin::Plugin;
 use crate::rule::{Action, Rule};
 use crate::whitespace;
 
-// ── Builder ──────────────────────────────────────────────────────────────
-
 /// Builder for constructing a [`Converter`] with custom rules and options.
 #[derive(Default)]
 #[allow(clippy::module_name_repetitions)]
@@ -25,9 +23,9 @@ pub struct ConverterBuilder {
     /// Registered rules, keyed by tag name.
     rules: HashMap<&'static str, Vec<Arc<dyn Rule>>>,
     /// Tags whose raw HTML should be preserved in the output.
-    keep_tags: Vec<String>,
+    keep_tags: HashSet<String>,
     /// Tags (and their content) to remove entirely from the output.
-    remove_tags: Vec<String>,
+    remove_tags: HashSet<String>,
 }
 
 impl std::fmt::Debug for ConverterBuilder {
@@ -103,8 +101,6 @@ impl ConverterBuilder {
     }
 }
 
-// ── Converter ────────────────────────────────────────────────────────────
-
 /// A frozen, reusable HTML-to-Markdown converter.
 ///
 /// Construct via [`Converter::builder()`] or the convenience
@@ -115,9 +111,9 @@ pub struct Converter {
     /// Rules keyed by tag name, tried in reverse order.
     rules: HashMap<&'static str, Vec<Arc<dyn Rule>>>,
     /// Tags to preserve as raw HTML.
-    keep_tags: Vec<String>,
+    keep_tags: HashSet<String>,
     /// Tags to remove entirely.
-    remove_tags: Vec<String>,
+    remove_tags: HashSet<String>,
 }
 
 impl std::fmt::Debug for Converter {
@@ -156,7 +152,7 @@ impl Converter {
     /// html5ever recovers from malformed HTML.
     pub fn convert(&self, html: &str) -> crate::Result<String> {
         let document = Html::parse_document(html);
-        let mut ctx = Context::new(self.options.clone());
+        let mut ctx = Context::new(self.options);
 
         // Pre-pass: compute list metadata.
         self.annotate_lists(&document, &mut ctx);
@@ -178,8 +174,6 @@ impl Converter {
         reader.read_to_string(&mut html)?;
         self.convert(&html)
     }
-
-    // ── List pre-pass ────────────────────────────────────────────────────
 
     /// Walks the DOM to compute [`ListMetadata`] for every `<li>` element.
     fn annotate_lists(&self, document: &Html, ctx: &mut Context) {
@@ -267,8 +261,6 @@ impl Converter {
         }
     }
 
-    // ── Traversal ────────────────────────────────────────────────────────
-
     /// Processes a DOM node and returns its markdown representation.
     fn process_node(&self, node_id: NodeId, document: &Html, ctx: &mut Context) -> String {
         let Some(node_ref) = document.tree.get(node_id) else {
@@ -319,9 +311,7 @@ impl Converter {
         let tag = element.value().name();
 
         // Check if this tag should be removed entirely.
-        if self.remove_tags.iter().any(|t| t == tag)
-            || matches!(tag, "script" | "style" | "noscript")
-        {
+        if self.remove_tags.contains(tag) || matches!(tag, "script" | "style" | "noscript") {
             return String::new();
         }
 
@@ -345,7 +335,7 @@ impl Converter {
         ctx.in_pre = was_in_pre;
 
         // Check if raw HTML should be kept.
-        if self.keep_tags.iter().any(|t| t == tag) {
+        if self.keep_tags.contains(tag) {
             return element.html();
         }
 

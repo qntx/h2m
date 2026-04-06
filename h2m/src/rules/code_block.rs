@@ -42,11 +42,8 @@ impl CodeBlockRule {
 
         // Trim a single leading/trailing newline from content (html5ever often
         // leaves one).
-        let trimmed = content
-            .strip_prefix('\n')
-            .unwrap_or(content)
-            .strip_suffix('\n')
-            .unwrap_or(content);
+        let without_prefix = content.strip_prefix('\n').unwrap_or(content);
+        let trimmed = without_prefix.strip_suffix('\n').unwrap_or(without_prefix);
 
         Action::Replace(format!("\n\n{fence}{lang_tag}\n{trimmed}\n{fence}\n\n"))
     }
