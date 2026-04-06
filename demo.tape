@@ -47,11 +47,3 @@ Type "h2m https://example.com -o example.md && cat example.md"
 Sleep 500ms
 Enter
 Sleep 4s
-
-Ctrl+L
-
-# 6. Show help
-Type "h2m --help"
-Sleep 500ms
-Enter
-Sleep 5s
