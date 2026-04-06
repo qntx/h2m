@@ -1,8 +1,4 @@
 //! Integration tests for h2m.
-//!
-//! Organized by feature area. Every test uses exact assertions (`assert_eq!`)
-//! wherever the output is deterministic. Tests that depend on complex html5ever
-//! tree reconstruction use targeted structural assertions with comments.
 
 use h2m::{Converter, Options, convert, convert_gfm};
 use pretty_assertions::assert_eq;
@@ -27,8 +23,6 @@ fn ref_converter(style: h2m::LinkReferenceStyle) -> Converter {
     opts.link_reference_style = style;
     with_options(opts)
 }
-
-// ── Headings ──
 
 #[test]
 fn headings_atx_h1_through_h3() {
@@ -84,8 +78,6 @@ fn headings_newlines_collapsed_to_spaces() {
 fn headings_with_paragraph() {
     assert_eq!(convert("<h1>Hello</h1><p>World</p>"), "# Hello\n\nWorld");
 }
-
-// ── Emphasis & Strong ──
 
 #[test]
 fn emphasis_default_asterisk() {
@@ -158,8 +150,6 @@ fn empty_em_skipped() {
     assert_eq!(convert("<p>a<em></em>b</p>"), "ab");
 }
 
-// ── Inline Code ──
-
 #[test]
 fn inline_code_basic() {
     assert_eq!(convert("<p>use <code>cargo</code></p>"), "use `cargo`");
@@ -189,8 +179,6 @@ fn kbd_tag_rendered_as_inline_code() {
 fn empty_inline_code_skipped() {
     assert_eq!(convert("<p>a<code></code>b</p>"), "ab");
 }
-
-// ── Links ──
 
 #[test]
 fn link_inline_basic() {
@@ -265,8 +253,6 @@ fn link_referenced_shortcut() {
     assert_eq!(md, "[Rust]\n\n[Rust]: https://rust-lang.org");
 }
 
-// ── Images ──
-
 #[test]
 fn image_basic() {
     assert_eq!(
@@ -295,8 +281,6 @@ fn image_alt_newline_normalized_to_space() {
         "![A cat](cat.png)"
     );
 }
-
-// ── Lists ──
 
 #[test]
 fn list_unordered() {
@@ -358,8 +342,6 @@ fn list_bullet_asterisk_option() {
     );
 }
 
-// ── Blockquotes ──
-
 #[test]
 fn blockquote_basic() {
     assert_eq!(
@@ -380,8 +362,6 @@ fn blockquote_nested() {
 fn blockquote_empty_skipped() {
     assert_eq!(convert("<blockquote></blockquote>"), "");
 }
-
-// ── Code Blocks ──
 
 #[test]
 fn code_block_fenced_with_language() {
@@ -421,11 +401,10 @@ fn code_block_tilde_fence() {
 fn code_block_indented_style() {
     let mut opts = Options::default();
     opts.code_block_style = h2m::CodeBlockStyle::Indented;
-    let md = with_options(opts).convert("<pre><code>line1\nline2</code></pre>");
-    // clean_output trims leading whitespace, stripping the first line's indent
-    // when the code block is the only content.
-    assert!(md.contains("line1"));
-    assert!(md.contains("    line2"));
+    assert_eq!(
+        with_options(opts).convert("<pre><code>line1\nline2</code></pre>"),
+        "    line1\n    line2"
+    );
 }
 
 #[test]
@@ -435,8 +414,6 @@ fn code_block_lang_prefix_detection() {
         "```js\nconst x = 1;\n```"
     );
 }
-
-// ── Horizontal Rules ──
 
 #[test]
 fn hr_default_dashes() {
@@ -473,16 +450,10 @@ fn hr_inside_heading_suppressed() {
     assert!(md.contains("Title"));
 }
 
-// ── Line Breaks ──
-
 #[test]
-fn line_break_produces_newline() {
-    // clean_output strips trailing spaces, so the "  \n" hard break
-    // collapses to a plain newline in the final output.
-    assert_eq!(convert("<p>line1<br/>line2</p>"), "line1\nline2");
+fn line_break_hard() {
+    assert_eq!(convert("<p>line1<br/>line2</p>"), "line1  \nline2");
 }
-
-// ── Iframes ──
 
 #[test]
 fn iframe_rendered_as_link() {
@@ -499,8 +470,6 @@ fn iframe_data_uri_skipped() {
         ""
     );
 }
-
-// ── Domain Resolution ──
 
 #[test]
 fn domain_resolves_relative_image() {
@@ -547,8 +516,6 @@ fn domain_resolves_relative_iframe() {
     );
 }
 
-// ── GFM: Strikethrough ──
-
 #[test]
 fn gfm_del_tag() {
     assert_eq!(convert_gfm("<p><del>removed</del></p>"), "~~removed~~");
@@ -566,8 +533,6 @@ fn gfm_strike_tag() {
         "~~removed~~"
     );
 }
-
-// ── GFM: Tables ──
 
 #[test]
 fn gfm_table_basic_structure() {
@@ -600,8 +565,6 @@ fn gfm_table_alignment() {
     assert!(sep.contains("--:"), "right alignment marker");
 }
 
-// ── GFM: Task Lists ──
-
 #[test]
 fn gfm_task_list_checked_and_unchecked() {
     let html = r#"<ul>
@@ -614,8 +577,6 @@ fn gfm_task_list_checked_and_unchecked() {
     assert!(lines[0].contains("[x]") && lines[0].contains("done"));
     assert!(lines[1].contains("[ ]") && lines[1].contains("todo"));
 }
-
-// ── Escape & Entities ──
 
 #[test]
 fn html_entities_decoded_and_special_chars_escaped() {
@@ -641,8 +602,6 @@ fn markdown_special_chars_escaped_in_text() {
     let md = convert("<p>a*b_c</p>");
     assert_eq!(md, "a\\*b\\_c");
 }
-
-// ── Builder API ──
 
 #[test]
 fn builder_keep_tags_preserves_html() {
@@ -675,8 +634,6 @@ fn builder_default_options_produce_commonmark() {
     let md = c.convert("<h1>Title</h1><p><strong>bold</strong></p><ul><li>item</li></ul>");
     assert_eq!(md, "# Title\n\n**bold**\n\n- item");
 }
-
-// ── Edge Cases ──
 
 #[test]
 fn empty_input() {
@@ -726,8 +683,6 @@ fn multiple_paragraphs_separated_by_blank_lines() {
 #[test]
 fn heading_inside_link_becomes_bold() {
     // html5ever restructures <a><h2>...</h2></a> due to block-in-inline rules.
-    // The exact tree depends on the parser, but the heading content should
-    // appear as bold (not as a heading prefix) somewhere in the link context.
     let md = convert(r#"<a href="/page"><h2>Title</h2></a>"#);
     assert!(
         md.contains("**Title**"),
@@ -735,8 +690,6 @@ fn heading_inside_link_becomes_bold() {
     );
     assert!(!md.contains("## "), "should not produce ATX heading prefix");
 }
-
-// ── Convenience Functions ──
 
 #[test]
 fn convert_gfm_includes_all_extensions() {
@@ -746,11 +699,8 @@ fn convert_gfm_includes_all_extensions() {
 
 #[test]
 fn convert_is_infallible() {
-    // convert() returns String directly, not Result.
     let _: String = convert("<h1>test</h1>");
 }
-
-// ── Reader API ──
 
 #[test]
 #[allow(clippy::unwrap_used)]

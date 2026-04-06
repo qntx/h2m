@@ -100,34 +100,96 @@ mod tests {
     use super::*;
 
     #[test]
-    fn plain_text_not_escaped() {
-        let result = escape_markdown("hello world", EscapeMode::Basic);
-        assert_eq!(result, "hello world");
-        assert!(matches!(result, Cow::Borrowed(_)));
+    fn empty_string_borrowed() {
+        let r = escape_markdown("", EscapeMode::Basic);
+        assert_eq!(r, "");
+        assert!(matches!(r, Cow::Borrowed(_)));
     }
 
     #[test]
-    fn special_chars_escaped() {
-        let result = escape_markdown("a*b_c`d", EscapeMode::Basic);
-        assert_eq!(result, "a\\*b\\_c\\`d");
+    fn plain_text_borrowed() {
+        let r = escape_markdown("hello world", EscapeMode::Basic);
+        assert_eq!(r, "hello world");
+        assert!(matches!(r, Cow::Borrowed(_)));
     }
 
     #[test]
-    fn disabled_mode_no_escape() {
-        let result = escape_markdown("a*b", EscapeMode::Disabled);
-        assert_eq!(result, "a*b");
-        assert!(matches!(result, Cow::Borrowed(_)));
+    fn disabled_mode_preserves_all() {
+        let r = escape_markdown("*bold* [link] <html>", EscapeMode::Disabled);
+        assert_eq!(r, "*bold* [link] <html>");
+        assert!(matches!(r, Cow::Borrowed(_)));
     }
 
     #[test]
-    fn brackets_escaped() {
-        let result = escape_markdown("[link]", EscapeMode::Basic);
-        assert_eq!(result, "\\[link\\]");
+    fn backslash() {
+        assert_eq!(escape_markdown("a\\b", EscapeMode::Basic), "a\\\\b");
     }
 
     #[test]
-    fn pipe_escaped() {
-        let result = escape_markdown("a|b", EscapeMode::Basic);
-        assert_eq!(result, "a\\|b");
+    fn asterisk_underscore_backtick() {
+        assert_eq!(
+            escape_markdown("a*b_c`d", EscapeMode::Basic),
+            "a\\*b\\_c\\`d"
+        );
+    }
+
+    #[test]
+    fn brackets() {
+        assert_eq!(escape_markdown("[link]", EscapeMode::Basic), "\\[link\\]");
+    }
+
+    #[test]
+    fn angle_brackets() {
+        assert_eq!(escape_markdown("<tag>", EscapeMode::Basic), "\\<tag\\>");
+    }
+
+    #[test]
+    fn pipe() {
+        assert_eq!(escape_markdown("a|b", EscapeMode::Basic), "a\\|b");
+    }
+
+    #[test]
+    fn heading_at_line_start() {
+        assert_eq!(escape_markdown("# h1", EscapeMode::Basic), "\\# h1");
+        assert_eq!(escape_markdown("## h2", EscapeMode::Basic), "\\## h2");
+    }
+
+    #[test]
+    fn heading_after_newline() {
+        assert_eq!(
+            escape_markdown("text\n## sub", EscapeMode::Basic),
+            "text\n\\## sub"
+        );
+    }
+
+    #[test]
+    fn blockquote_at_line_start() {
+        assert_eq!(escape_markdown("> quote", EscapeMode::Basic), "\\> quote");
+    }
+
+    #[test]
+    fn unordered_list_at_line_start() {
+        assert_eq!(escape_markdown("- item", EscapeMode::Basic), "\\- item");
+        assert_eq!(escape_markdown("+ item", EscapeMode::Basic), "\\+ item");
+    }
+
+    #[test]
+    fn ordered_list_at_line_start() {
+        assert_eq!(escape_markdown("1. first", EscapeMode::Basic), "1\\. first");
+    }
+
+    #[test]
+    fn thematic_break_at_line_start() {
+        assert_eq!(escape_markdown("---", EscapeMode::Basic), "\\---");
+    }
+
+    #[test]
+    fn hash_mid_line_not_escaped() {
+        assert_eq!(escape_markdown("C# lang", EscapeMode::Basic), "C# lang");
+    }
+
+    #[test]
+    fn dash_mid_line_not_escaped() {
+        assert_eq!(escape_markdown("a - b", EscapeMode::Basic), "a - b");
     }
 }

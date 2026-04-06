@@ -29,14 +29,21 @@ pub fn collapse_whitespace(text: &str) -> Cow<'_, str> {
     Cow::Owned(result)
 }
 
-/// Trims trailing whitespace from each line and collapses 3+ consecutive
-/// newlines into exactly two. Returns the final output trimmed.
+/// Cleans up raw converter output:
+///
+/// - Collapses 3+ consecutive newlines into exactly two.
+/// - Trims trailing whitespace from each line, **except** markdown hard breaks
+///   (2+ trailing spaces before a newline are preserved as exactly two spaces).
+/// - Strips leading newlines and trailing whitespace from the final result,
+///   while preserving indentation on the first content line.
 pub fn clean_output(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut consecutive_newlines = 0u32;
 
     for line in text.split('\n') {
         let trimmed = line.trim_end();
+        let trailing_spaces = line.len() - trimmed.len();
+        let hard_break = trailing_spaces >= 2;
 
         if trimmed.is_empty() {
             consecutive_newlines += 1;
@@ -49,16 +56,20 @@ pub fn clean_output(text: &str) -> String {
                 result.push('\n');
             }
             result.push_str(trimmed);
+            if hard_break {
+                result.push_str("  ");
+            }
         }
     }
 
-    // Trim leading/trailing whitespace in-place.
-    let end = result.trim_end().len();
-    result.truncate(end);
-    let start = result.len() - result.trim_start().len();
+    // Strip leading newlines (but preserve indentation of first content line).
+    let start = result.bytes().take_while(|&b| b == b'\n').count();
     if start > 0 {
         result.drain(..start);
     }
+    // Strip trailing whitespace.
+    let end = result.trim_end().len();
+    result.truncate(end);
     result
 }
 
@@ -67,8 +78,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn collapse_preserves_single_spaces() {
-        assert_eq!(collapse_whitespace("hello world"), "hello world");
+    fn collapse_empty() {
+        let r = collapse_whitespace("");
+        assert_eq!(r, "");
+        assert!(matches!(r, Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn collapse_no_op_borrowed() {
+        let r = collapse_whitespace("hello world");
+        assert_eq!(r, "hello world");
+        assert!(matches!(r, Cow::Borrowed(_)));
     }
 
     #[test]
@@ -82,12 +102,50 @@ mod tests {
     }
 
     #[test]
-    fn clean_output_collapses_newlines() {
+    fn collapse_leading_and_trailing() {
+        assert_eq!(collapse_whitespace("  hello  "), " hello ");
+    }
+
+    #[test]
+    fn clean_empty() {
+        assert_eq!(clean_output(""), "");
+    }
+
+    #[test]
+    fn clean_collapses_triple_newlines() {
         assert_eq!(clean_output("a\n\n\n\nb"), "a\n\nb");
     }
 
     #[test]
-    fn clean_output_trims_trailing_spaces() {
-        assert_eq!(clean_output("hello   \nworld  "), "hello\nworld");
+    fn clean_trims_single_trailing_space() {
+        assert_eq!(clean_output("hello \nworld"), "hello\nworld");
+    }
+
+    #[test]
+    fn clean_preserves_hard_break() {
+        assert_eq!(clean_output("hello  \nworld"), "hello  \nworld");
+    }
+
+    #[test]
+    fn clean_normalizes_hard_break_to_two_spaces() {
+        assert_eq!(clean_output("hello     \nworld"), "hello  \nworld");
+    }
+
+    #[test]
+    fn clean_preserves_leading_indentation() {
+        assert_eq!(
+            clean_output("\n\n    line1\n    line2\n\n"),
+            "    line1\n    line2"
+        );
+    }
+
+    #[test]
+    fn clean_strips_leading_newlines_only() {
+        assert_eq!(clean_output("\n\ntext"), "text");
+    }
+
+    #[test]
+    fn clean_strips_trailing_whitespace() {
+        assert_eq!(clean_output("text\n\n"), "text");
     }
 }
