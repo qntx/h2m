@@ -34,13 +34,11 @@ impl Rule for TableRule {
             }
         }
 
-        let mut output = String::new();
-
+        let empty_header;
         let (header, body_rows) = if rows.first().is_some_and(|r| r.is_header) {
             (&rows[0], &rows[1..])
         } else {
-            // Synthesize an empty header row.
-            let empty_header = TableRow {
+            empty_header = TableRow {
                 is_header: true,
                 cells: vec![
                     TableCell {
@@ -50,17 +48,10 @@ impl Rule for TableRule {
                     col_count
                 ],
             };
-            write_row(&mut output, &empty_header, &col_widths);
-            output.push('\n');
-            write_separator(&mut output, &empty_header.cells, &col_widths);
-            output.push('\n');
-            for row in &rows {
-                write_row(&mut output, row, &col_widths);
-                output.push('\n');
-            }
-            return Action::Replace(format!("\n\n{}\n", output.trim_end()));
+            (&empty_header, rows.as_slice())
         };
 
+        let mut output = String::new();
         write_row(&mut output, header, &col_widths);
         output.push('\n');
         write_separator(&mut output, &header.cells, &col_widths);

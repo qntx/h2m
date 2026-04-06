@@ -36,7 +36,9 @@ pub fn escape_markdown(text: &str, mode: EscapeMode) -> Cow<'_, str> {
             // markdown structure.
             if let Some(escaped) = escape_line_start(&text[i..]) {
                 result.push_str(&escaped);
-                // Skip the characters we already handled.
+                // `escaped` = 1 added backslash + N original chars.
+                // The main loop already consumed the first original char,
+                // so advance past the remaining N − 1 = len − 2.
                 for _ in 0..escaped.len().saturating_sub(2) {
                     let _ = chars.next();
                 }

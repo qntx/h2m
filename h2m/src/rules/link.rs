@@ -80,10 +80,8 @@ impl Rule for Link {
 fn build_reference_link(display: &str, href: &str, title_part: &str, ctx: &mut Context) -> String {
     match ctx.options().link_reference_style {
         LinkReferenceStyle::Full => {
-            let idx = ctx.push_reference(format!(
-                "[{idx}]: {href}{title_part}",
-                idx = ctx.link_index + 1
-            ));
+            let idx = ctx.link_index + 1;
+            ctx.push_reference(format!("[{idx}]: {href}{title_part}"));
             format!("[{display}][{idx}]")
         }
         LinkReferenceStyle::Collapsed => {
