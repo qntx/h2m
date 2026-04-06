@@ -14,11 +14,11 @@ name = "h2m"
 path = "src/main.rs"
 
 [dependencies]
-h2m.workspace = true
+h2m = { workspace = true, features = ["fetch"] }
 clap.workspace = true
-reqwest.workspace = true
-url.workspace = true
-scraper.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

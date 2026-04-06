@@ -24,8 +24,12 @@
 //! assert_eq!(md, "~~old~~");
 //! ```
 
+pub mod html;
 pub mod plugins;
 pub mod rules;
+
+#[cfg(feature = "fetch")]
+pub mod fetch;
 
 pub(crate) mod converter;
 pub(crate) mod options;

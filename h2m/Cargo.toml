@@ -9,11 +9,20 @@ keywords.workspace = true
 categories.workspace = true
 readme.workspace = true
 
+[features]
+default = []
+fetch = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio"]
+
 [dependencies]
 scraper.workspace = true
 thiserror.workspace = true
 ego-tree.workspace = true
 url.workspace = true
+
+reqwest = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
 
 [dev-dependencies]
 pretty_assertions.workspace = true
