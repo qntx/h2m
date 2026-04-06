@@ -93,6 +93,19 @@ let md = converter.convert(r#"<a href="/about">About</a>"#).unwrap();
 assert_eq!(md, "[About](http://example.com/about)");
 ```
 
+## Design
+
+- **CommonMark compliant** — headings, paragraphs, emphasis, strong, code blocks, links, images, lists, blockquotes, horizontal rules, line breaks
+- **GFM extensions** — tables (with column alignment), strikethrough, task lists
+- **Reference-style links** — full (`[text][1]`), collapsed (`[text][]`), and shortcut (`[text]`) styles
+- **Domain resolution** — resolve relative URLs to absolute via the `url` crate (WHATWG compliant)
+- **Plugin architecture** — extend with custom rules via the `Rule` trait; register with `Converter::builder().use_plugin()`
+- **Keep / Remove** — selectively preserve raw HTML tags or strip them entirely
+- **CSS selector extraction** — CLI `--selector` flag to convert only matching elements
+- **Zero-copy fast paths** — `Cow<str>` for escaping and whitespace normalization; no allocation when input needs no transformation
+- **`Send + Sync`** — `Converter` is immutable after build, safe to share across threads (compile-time assertion)
+- **Strict linting** — Clippy `pedantic` + `nursery` + `correctness` (deny), zero warnings
+
 ## Conversion Examples
 
 **Input HTML:**
@@ -121,19 +134,6 @@ A **bold** and *italic* paragraph with [a link](https://example.com).
 fn main() {}
 ​```
 ```
-
-## Design
-
-- **CommonMark compliant** — headings, paragraphs, emphasis, strong, code blocks, links, images, lists, blockquotes, horizontal rules, line breaks
-- **GFM extensions** — tables (with column alignment), strikethrough, task lists
-- **Reference-style links** — full (`[text][1]`), collapsed (`[text][]`), and shortcut (`[text]`) styles
-- **Domain resolution** — resolve relative URLs to absolute via the `url` crate (WHATWG compliant)
-- **Plugin architecture** — extend with custom rules via the `Rule` trait; register with `Converter::builder().use_plugin()`
-- **Keep / Remove** — selectively preserve raw HTML tags or strip them entirely
-- **CSS selector extraction** — CLI `--selector` flag to convert only matching elements
-- **Zero-copy fast paths** — `Cow<str>` for escaping and whitespace normalization; no allocation when input needs no transformation
-- **`Send + Sync`** — `Converter` is immutable after build, safe to share across threads (compile-time assertion)
-- **Strict linting** — Clippy `pedantic` + `nursery` + `correctness` (deny), zero warnings
 
 ## Custom Rules
 
