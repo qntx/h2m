@@ -28,12 +28,25 @@
 
 mod cli;
 mod convert;
+mod error;
 mod output;
+
+use std::process::ExitCode;
 
 use clap::Parser;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> ExitCode {
     let cli = cli::Cli::parse();
-    convert::run(&cli).await;
+    match convert::run(&cli).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            if cli.json {
+                output::emit_json_error(&e.to_string(), e.url());
+            } else {
+                eprintln!("error: {e}");
+            }
+            ExitCode::FAILURE
+        }
+    }
 }

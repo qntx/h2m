@@ -21,7 +21,7 @@
 
 **Fast, extensible HTML-to-Markdown converter for Rust — CommonMark + GFM, plugin architecture, zero `unsafe`.**
 
-H2M converts HTML into clean Markdown with full CommonMark compliance and GitHub Flavored Markdown extensions. It uses a plugin-based rule system, supports reference-style links, relative URL resolution, and ships with a CLI that can fetch and convert web pages directly.
+H2M converts HTML into clean Markdown with full CommonMark compliance and GitHub Flavored Markdown extensions. It uses a plugin-based rule system, supports reference-style links, relative URL resolution, and ships with an async CLI powered by `tokio` for high-concurrency batch fetching.
 
 <p align="center">
   <img src="demo.gif" alt="H2M CLI Demo"/>
@@ -64,9 +64,35 @@ h2m --gfm --link-style referenced page.html -o output.md
 # Pipe from stdin
 curl -s https://example.com | h2m --selector main
 
+# JSON output for programmatic / agent consumption
+h2m --json https://example.com
+
+# Batch convert multiple URLs (NDJSON streaming output)
+h2m --json url1 url2 url3
+
+# Batch from file with concurrency control
+h2m --json --urls urls.txt -j 8 --delay 100
+
 # All formatting options
 h2m --gfm --heading-style setext --strong underscores --fence tilde page.html
 ```
+
+### JSON Output
+
+Single URL produces a pretty-printed JSON object:
+
+```json
+{
+  "url": "https://example.com",
+  "domain": "example.com",
+  "title": "Example Domain",
+  "markdown": "# Example Domain\n\n...",
+  "elapsed_ms": 234,
+  "content_length": 1256
+}
+```
+
+Multiple URLs produce NDJSON (one JSON object per line), ideal for streaming pipelines.
 
 ### Library Usage
 
@@ -93,6 +119,33 @@ let md = converter.convert(r#"<a href="/about">About</a>"#);
 assert_eq!(md, "[About](http://example.com/about)");
 ```
 
+### Async Fetching (feature = `"fetch"`)
+
+Enable the `fetch` feature for async HTTP fetching with built-in concurrency control, rate limiting, and streaming output:
+
+```rust,no_run
+use h2m::fetch::Fetcher;
+
+let fetcher = Fetcher::builder()
+    .concurrency(8)
+    .gfm(true)
+    .extract_links(true)
+    .build()?;
+
+// Single fetch
+let result = fetcher.fetch("https://example.com").await?;
+println!("{}", result.markdown);
+
+// Batch with streaming callback
+let urls = vec!["https://a.com".into(), "https://b.com".into()];
+fetcher.fetch_many_streaming(&urls, |result| {
+    match result {
+        Ok(r) => println!("{}", r.markdown),
+        Err(e) => eprintln!("error: {e}"),
+    }
+}).await;
+```
+
 ## Design
 
 - **CommonMark compliant** — headings, paragraphs, emphasis, strong, code blocks, links, images, lists, blockquotes, horizontal rules, line breaks
@@ -100,8 +153,11 @@ assert_eq!(md, "[About](http://example.com/about)");
 - **Reference-style links** — full (`[text][1]`), collapsed (`[text][]`), and shortcut (`[text]`) styles
 - **Domain resolution** — resolve relative URLs to absolute via the `url` crate (WHATWG compliant)
 - **Plugin architecture** — extend with custom rules via the `Rule` trait; register with `Converter::builder().use_plugin()`
+- **Async HTTP pipeline** — `tokio` + `reqwest` with semaphore-based concurrency, rate limiting, and streaming NDJSON output (feature-gated)
+- **JSON / NDJSON output** — structured output for agent/programmatic consumption; single result → JSON, batch → NDJSON
+- **HTML utilities** — `html::extract_title()`, `html::extract_links()`, `html::select()` for metadata extraction without full conversion
 - **Keep / Remove** — selectively preserve raw HTML tags or strip them entirely
-- **CSS selector extraction** — CLI `--selector` flag to convert only matching elements
+- **CSS selector extraction** — `--selector` flag to convert only matching elements
 - **Zero-copy fast paths** — `Cow<str>` for escaping and whitespace normalization; no allocation when input needs no transformation
 - **`Send + Sync`** — `Converter` is immutable after build, safe to share across threads (compile-time assertion)
 - **Strict linting** — Clippy `pedantic` + `nursery` + `correctness` (deny), zero warnings

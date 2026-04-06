@@ -1,6 +1,7 @@
 //! # h2m
 //!
-//! A high-quality HTML-to-Markdown converter for Rust.
+//! Fast, extensible HTML-to-Markdown converter for Rust — `CommonMark` + GFM,
+//! plugin architecture, zero `unsafe`.
 //!
 //! ## Quick start
 //!
@@ -9,19 +10,57 @@
 //! assert_eq!(md, "# Hello\n\nWorld");
 //! ```
 //!
-//! ## Custom options
+//! ## Builder API
 //!
 //! ```
 //! use h2m::{Converter, Options};
 //! use h2m::plugins::Gfm;
+//! use h2m::rules::CommonMark;
 //!
 //! let converter = Converter::builder()
 //!     .options(Options::default())
+//!     .use_plugin(CommonMark)
 //!     .use_plugin(Gfm)
+//!     .domain("example.com")
 //!     .build();
 //!
-//! let md = converter.convert("<del>old</del>");
-//! assert_eq!(md, "~~old~~");
+//! let md = converter.convert(r#"<a href="/about">About</a>"#);
+//! assert_eq!(md, "[About](http://example.com/about)");
+//! ```
+//!
+//! ## HTML utilities
+//!
+//! The [`html`] module provides helpers for extracting page metadata without
+//! running a full conversion:
+//!
+//! ```
+//! let title = h2m::html::extract_title("<title>Hello</title>");
+//! assert_eq!(title.as_deref(), Some("Hello"));
+//! ```
+//!
+//! ## Async fetching (feature = `"fetch"`)
+//!
+//! Enable the **`fetch`** Cargo feature for async HTTP fetching with
+//! built-in concurrency control, rate limiting, and streaming output:
+//!
+//! ```toml
+//! [dependencies]
+//! h2m = { version = "*", features = ["fetch"] }
+//! ```
+//!
+//! ```no_run
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! use h2m::fetch::Fetcher;
+//!
+//! let fetcher = Fetcher::builder()
+//!     .concurrency(8)
+//!     .gfm(true)
+//!     .build()?;
+//!
+//! let result = fetcher.fetch("https://example.com").await?;
+//! println!("{}", result.markdown);
+//! # Ok(())
+//! # }
 //! ```
 
 pub mod html;

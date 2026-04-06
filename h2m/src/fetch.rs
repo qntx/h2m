@@ -28,7 +28,7 @@ use crate::plugins::Gfm;
 use crate::rules::CommonMark;
 
 /// Bundled conversion parameters passed to spawned tasks.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct ConvertConfig {
     /// Converter options.
     options: Options,
@@ -36,6 +36,10 @@ struct ConvertConfig {
     gfm: bool,
     /// Extract links.
     extract_links: bool,
+    /// Base domain for resolving relative URLs.
+    domain: Option<String>,
+    /// CSS selector to extract before converting.
+    selector: Option<String>,
 }
 
 /// Successful conversion result with metadata.
@@ -64,7 +68,8 @@ pub struct FetchResult {
 }
 
 /// Error returned by fetch operations.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, thiserror::Error)]
+#[error("{error}")]
 #[non_exhaustive]
 #[allow(clippy::module_name_repetitions)]
 pub struct FetchError {
@@ -85,14 +90,6 @@ impl FetchError {
         }
     }
 }
-
-impl std::fmt::Display for FetchError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.error)
-    }
-}
-
-impl std::error::Error for FetchError {}
 
 /// Builder for configuring a [`Fetcher`].
 #[derive(Debug)]
@@ -253,7 +250,8 @@ impl Fetcher {
     pub async fn fetch(&self, url: &str) -> Result<FetchResult, FetchError> {
         let start = Instant::now();
         let raw_html = self.fetch_html(url).await?;
-        Ok(self.convert_fetched(url, &raw_html, start))
+        let cfg = self.config();
+        Ok(convert_to_result(Some(url), &raw_html, start, &cfg))
     }
 
     /// Fetches and converts multiple URLs concurrently.
@@ -269,30 +267,19 @@ impl Fetcher {
                 tokio::time::sleep(self.delay).await;
             }
 
-            let permit = Arc::clone(&sem).acquire_owned().await;
+            let Ok(permit) = Arc::clone(&sem).acquire_owned().await else {
+                break;
+            };
             let owned_url = url.clone();
             let cli = self.client.clone();
-            let cfg = ConvertConfig {
-                options: self.options,
-                gfm: self.gfm,
-                extract_links: self.extract_links,
-            };
-            let dom = self.domain.clone();
-            let sel = self.selector.clone();
+            let cfg = self.config();
 
             handles.push(tokio::spawn(async move {
                 let _permit = permit;
                 let start = Instant::now();
 
                 let raw_html = fetch_html_inner(&cli, &owned_url).await?;
-                Ok(convert_fetched_inner(
-                    &owned_url,
-                    &raw_html,
-                    start,
-                    &cfg,
-                    dom.as_deref(),
-                    sel.as_deref(),
-                ))
+                Ok(convert_to_result(Some(&owned_url), &raw_html, start, &cfg))
             }));
         }
 
@@ -321,13 +308,7 @@ impl Fetcher {
 
         let urls_owned: Vec<String> = urls.to_vec();
         let client = self.client.clone();
-        let cfg = ConvertConfig {
-            options: self.options,
-            gfm: self.gfm,
-            extract_links: self.extract_links,
-        };
-        let domain = self.domain.clone();
-        let selector = self.selector.clone();
+        let cfg = self.config();
         let delay = self.delay;
 
         let producer = tokio::spawn(async move {
@@ -336,26 +317,20 @@ impl Fetcher {
                     tokio::time::sleep(delay).await;
                 }
 
-                let permit = Arc::clone(&sem).acquire_owned().await;
+                let Ok(permit) = Arc::clone(&sem).acquire_owned().await else {
+                    break;
+                };
                 let tx_c = tx.clone();
                 let owned_url = url.clone();
                 let cli = client.clone();
-                let dom = domain.clone();
-                let sel = selector.clone();
+                let cfg_task = cfg.clone();
 
                 tokio::spawn(async move {
                     let _permit = permit;
                     let start = Instant::now();
 
                     let result = fetch_html_inner(&cli, &owned_url).await.map(|raw_html| {
-                        convert_fetched_inner(
-                            &owned_url,
-                            &raw_html,
-                            start,
-                            &cfg,
-                            dom.as_deref(),
-                            sel.as_deref(),
-                        )
+                        convert_to_result(Some(&owned_url), &raw_html, start, &cfg_task)
                     });
 
                     let _ = tx_c.send(result).await;
@@ -376,58 +351,24 @@ impl Fetcher {
     #[must_use]
     pub fn convert_html(&self, raw_html: &str) -> FetchResult {
         let start = Instant::now();
-        let content_length = raw_html.len();
+        let cfg = self.config();
+        convert_to_result(None, raw_html, start, &cfg)
+    }
 
-        let html_to_convert = self
-            .selector
-            .as_deref()
-            .map_or_else(|| raw_html.to_owned(), |sel| html::select(raw_html, sel));
-
-        let title = html::extract_title(raw_html);
-        let links = if self.extract_links {
-            Some(html::extract_links(raw_html))
-        } else {
-            None
-        };
-
-        let md = convert_raw(
-            &self.options,
-            self.gfm,
-            &html_to_convert,
-            self.domain.as_deref(),
-        );
-
-        FetchResult {
-            url: None,
+    /// Builds a `ConvertConfig` snapshot from current fetcher state.
+    fn config(&self) -> ConvertConfig {
+        ConvertConfig {
+            options: self.options,
+            gfm: self.gfm,
+            extract_links: self.extract_links,
             domain: self.domain.clone(),
-            title,
-            markdown: md,
-            links,
-            elapsed_ms: elapsed_ms(start),
-            content_length,
+            selector: self.selector.clone(),
         }
     }
 
     /// Fetches raw HTML from a URL.
     async fn fetch_html(&self, url: &str) -> Result<String, FetchError> {
         fetch_html_inner(&self.client, url).await
-    }
-
-    /// Converts fetched HTML to a `FetchResult` with URL metadata.
-    fn convert_fetched(&self, url: &str, raw_html: &str, start: Instant) -> FetchResult {
-        let cfg = ConvertConfig {
-            options: self.options,
-            gfm: self.gfm,
-            extract_links: self.extract_links,
-        };
-        convert_fetched_inner(
-            url,
-            raw_html,
-            start,
-            &cfg,
-            self.domain.as_deref(),
-            self.selector.as_deref(),
-        )
     }
 }
 
@@ -444,38 +385,41 @@ async fn fetch_html_inner(client: &reqwest::Client, url: &str) -> Result<String,
     })
 }
 
-/// Pure conversion from fetched HTML to `FetchResult`.
-fn convert_fetched_inner(
-    url: &str,
+/// Single unified conversion path: raw HTML → `FetchResult`.
+///
+/// Parses the HTML once, then reuses the parsed document for title extraction,
+/// link extraction, and CSS selection.
+fn convert_to_result(
+    url: Option<&str>,
     raw_html: &str,
     start: Instant,
     cfg: &ConvertConfig,
-    domain_override: Option<&str>,
-    selector: Option<&str>,
 ) -> FetchResult {
     let content_length = raw_html.len();
+    let doc = scraper::Html::parse_document(raw_html);
 
-    let html_to_convert =
-        selector.map_or_else(|| raw_html.to_owned(), |sel| html::select(raw_html, sel));
+    let html_to_convert = cfg.selector.as_deref().map_or_else(
+        || raw_html.to_owned(),
+        |sel| html::select_doc(&doc, raw_html, sel),
+    );
 
-    let title = html::extract_title(raw_html);
+    let title = html::extract_title_doc(&doc);
     let links = if cfg.extract_links {
-        Some(html::extract_links(raw_html))
+        Some(html::extract_links_doc(&doc))
     } else {
         None
     };
 
-    let parsed = url::Url::parse(url).ok();
-    let auto_domain = parsed
-        .as_ref()
-        .and_then(|u| u.host_str())
-        .map(str::to_owned);
-
-    let domain = domain_override.or(auto_domain.as_deref());
+    let auto_domain = url.and_then(|u| {
+        url::Url::parse(u)
+            .ok()
+            .and_then(|parsed| parsed.host_str().map(str::to_owned))
+    });
+    let domain = cfg.domain.as_deref().or(auto_domain.as_deref());
     let md = convert_raw(&cfg.options, cfg.gfm, &html_to_convert, domain);
 
     FetchResult {
-        url: Some(url.to_owned()),
+        url: url.map(str::to_owned),
         domain: domain.map(str::to_owned),
         title,
         markdown: md,

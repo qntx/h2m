@@ -2,16 +2,17 @@
 
 use std::fs;
 use std::io::{self, Read};
-use std::process;
 use std::time::Duration;
 
-use h2m::fetch::{FetchError, FetchResult, Fetcher};
+use h2m::Converter;
+use h2m::fetch::Fetcher;
 
 use crate::cli::{self, Cli};
+use crate::error::CliError;
 use crate::output;
 
 /// Builds a [`Fetcher`] from CLI arguments.
-fn build_fetcher(cli: &Cli) -> Fetcher {
+fn build_fetcher(cli: &Cli) -> Result<Fetcher, CliError> {
     let mut builder = Fetcher::builder()
         .options(cli::build_options(cli))
         .gfm(cli.gfm)
@@ -27,37 +28,52 @@ fn build_fetcher(cli: &Cli) -> Fetcher {
         builder = builder.selector(s);
     }
 
-    builder.build().unwrap_or_else(|e| {
-        if cli.json {
-            output::emit_json_error(&e.error, None);
-        } else {
-            eprintln!("error: {e}");
-        }
-        process::exit(1);
-    })
+    Ok(builder.build()?)
+}
+
+/// Builds a [`Converter`] from CLI arguments (no HTTP client needed).
+fn build_converter(cli: &Cli) -> Converter {
+    let mut builder = Converter::builder()
+        .options(cli::build_options(cli))
+        .use_plugin(h2m::rules::CommonMark);
+
+    if cli.gfm {
+        builder = builder.use_plugin(h2m::plugins::Gfm);
+    }
+    if let Some(d) = &cli.domain {
+        builder = builder.domain(d);
+    }
+
+    builder.build()
 }
 
 /// Main entry point: dispatches to single, batch, or stdin mode.
-pub async fn run(cli: &Cli) {
-    let inputs = collect_inputs(cli);
+///
+/// # Errors
+///
+/// Returns `CliError` on fetch failures, I/O errors, or file read errors.
+pub async fn run(cli: &Cli) -> Result<(), CliError> {
+    let inputs = collect_inputs(cli)?;
 
     if inputs.is_empty() {
-        run_stdin(cli);
-        return;
+        run_stdin(cli)?;
+        return Ok(());
     }
 
-    let fetcher = build_fetcher(cli);
+    let fetcher = build_fetcher(cli)?;
 
     if inputs.len() == 1 {
-        let result = fetcher.fetch(&inputs[0]).await;
+        let result = fetcher.fetch(&inputs[0]).await?;
         output::emit_single(cli, &result);
     } else {
         run_batch(cli, &fetcher, &inputs).await;
     }
+
+    Ok(())
 }
 
 /// Collects all input sources from CLI args and `--urls` file.
-fn collect_inputs(cli: &Cli) -> Vec<String> {
+fn collect_inputs(cli: &Cli) -> Result<Vec<String>, CliError> {
     let mut inputs: Vec<String> = cli
         .input
         .iter()
@@ -66,15 +82,10 @@ fn collect_inputs(cli: &Cli) -> Vec<String> {
         .collect();
 
     if let Some(path) = &cli.urls {
-        let content = fs::read_to_string(path).unwrap_or_else(|e| {
-            let msg = format!("cannot read URL file {}: {e}", path.display());
-            if cli.json {
-                output::emit_json_error(&msg, None);
-            } else {
-                eprintln!("error: {msg}");
-            }
-            process::exit(1);
-        });
+        let content = fs::read_to_string(path).map_err(|e| CliError::Other {
+            message: format!("cannot read URL file {}: {e}", path.display()),
+            url: None,
+        })?;
         for line in content.lines() {
             let trimmed = line.trim();
             if !trimmed.is_empty() && !trimmed.starts_with('#') {
@@ -84,25 +95,26 @@ fn collect_inputs(cli: &Cli) -> Vec<String> {
     }
 
     if cli.input.iter().any(|s| s == "-") && inputs.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
-    inputs
+    Ok(inputs)
 }
 
-/// Reads from stdin and converts.
-fn run_stdin(cli: &Cli) {
-    let fetcher = build_fetcher(cli);
+/// Reads from stdin and converts without creating an HTTP client.
+fn run_stdin(cli: &Cli) -> Result<(), CliError> {
+    let converter = build_converter(cli);
 
     let mut buf = String::new();
-    if let Err(e) = io::stdin().read_to_string(&mut buf) {
-        let err = FetchError::new(format!("cannot read stdin: {e}"), None);
-        output::emit_single(cli, &Err(err));
-        return;
-    }
+    io::stdin().read_to_string(&mut buf)?;
 
-    let result: Result<FetchResult, FetchError> = Ok(fetcher.convert_html(&buf));
-    output::emit_single(cli, &result);
+    let html = match &cli.selector {
+        Some(sel) => h2m::html::select(&buf, sel),
+        None => buf,
+    };
+    let md = converter.convert(&html);
+    output::emit_single_markdown(cli, &md);
+    Ok(())
 }
 
 /// Batch-converts multiple URLs with streaming output.

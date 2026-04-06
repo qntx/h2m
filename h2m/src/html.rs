@@ -17,12 +17,7 @@ use scraper::Html;
 /// ```
 #[must_use]
 pub fn extract_title(html: &str) -> Option<String> {
-    let doc = Html::parse_document(html);
-    let sel = scraper::Selector::parse("title").ok()?;
-    doc.select(&sel)
-        .next()
-        .map(|el| el.text().collect::<String>().trim().to_owned())
-        .filter(|t| !t.is_empty())
+    extract_title_doc(&Html::parse_document(html))
 }
 
 /// Extracts all `<a href="…">` link URLs from an HTML document.
@@ -37,15 +32,7 @@ pub fn extract_title(html: &str) -> Option<String> {
 /// ```
 #[must_use]
 pub fn extract_links(html: &str) -> Vec<String> {
-    let doc = Html::parse_document(html);
-    let Ok(sel) = scraper::Selector::parse("a[href]") else {
-        return Vec::new();
-    };
-    doc.select(&sel)
-        .filter_map(|el| el.value().attr("href"))
-        .filter(|href| !href.is_empty() && !href.starts_with('#'))
-        .map(str::to_owned)
-        .collect()
+    extract_links_doc(&Html::parse_document(html))
 }
 
 /// Applies a CSS selector to an HTML document and returns the concatenated
@@ -63,18 +50,44 @@ pub fn extract_links(html: &str) -> Vec<String> {
 /// ```
 #[must_use]
 pub fn select(html: &str, selector: &str) -> String {
-    let document = Html::parse_document(html);
+    select_doc(&Html::parse_document(html), html, selector)
+}
+
+/// Extracts `<title>` text from a pre-parsed document.
+pub(crate) fn extract_title_doc(doc: &Html) -> Option<String> {
+    let sel = scraper::Selector::parse("title").ok()?;
+    doc.select(&sel)
+        .next()
+        .map(|el| el.text().collect::<String>().trim().to_owned())
+        .filter(|t| !t.is_empty())
+}
+
+/// Extracts all `<a href>` link URLs from a pre-parsed document.
+pub(crate) fn extract_links_doc(doc: &Html) -> Vec<String> {
+    let Ok(sel) = scraper::Selector::parse("a[href]") else {
+        return Vec::new();
+    };
+    doc.select(&sel)
+        .filter_map(|el| el.value().attr("href"))
+        .filter(|href| !href.is_empty() && !href.starts_with('#'))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Applies a CSS selector to a pre-parsed document, returning matched inner
+/// HTML or the `original` string if nothing matches.
+pub(crate) fn select_doc(doc: &Html, original: &str, selector: &str) -> String {
     let Ok(parsed) = scraper::Selector::parse(selector) else {
-        return html.to_owned();
+        return original.to_owned();
     };
 
     let mut extracted = String::new();
-    for element in document.select(&parsed) {
+    for element in doc.select(&parsed) {
         extracted.push_str(&element.inner_html());
     }
 
     if extracted.is_empty() {
-        return html.to_owned();
+        return original.to_owned();
     }
 
     extracted

@@ -2,27 +2,31 @@
 
 use std::fs;
 use std::io::{self, Write};
-use std::process;
 
 use h2m::fetch::{FetchError, FetchResult};
 
 use crate::cli::Cli;
 
-/// Emits a single result to stdout (JSON pretty-printed or plain Markdown).
-pub fn emit_single(cli: &Cli, result: &Result<FetchResult, FetchError>) {
+/// Emits a single `FetchResult` to stdout (JSON pretty-printed or plain
+/// Markdown).
+pub fn emit_single(cli: &Cli, result: &FetchResult) {
     if cli.json {
-        emit_json(result);
-        if result.is_err() {
-            process::exit(1);
-        }
+        write_json_pretty(result);
     } else {
-        match result {
-            Ok(r) => write_markdown(cli, &r.markdown),
-            Err(e) => {
-                eprintln!("error: {e}");
-                process::exit(1);
-            }
+        write_markdown(cli, &result.markdown);
+    }
+}
+
+/// Emits a plain markdown string to stdout (for stdin mode).
+pub fn emit_single_markdown(cli: &Cli, md: &str) {
+    if cli.json {
+        #[derive(serde::Serialize)]
+        struct StdinResult<'a> {
+            markdown: &'a str,
         }
+        write_json_pretty(&StdinResult { markdown: md });
+    } else {
+        write_markdown(cli, md);
     }
 }
 
@@ -33,60 +37,50 @@ pub fn emit_ndjson(result: &Result<FetchResult, FetchError>) {
         Err(e) => serde_json::to_string(e),
     };
     if let Ok(json) = line {
-        let stdout = io::stdout();
-        let mut out = stdout.lock();
-        let _ = writeln!(out, "{json}");
+        write_stdout_line(&json);
     }
 }
 
 /// Emits a batch result line (plain text mode).
 pub fn emit_batch_plain(result: &Result<FetchResult, FetchError>) {
     match result {
-        Ok(r) => {
-            let stdout = io::stdout();
-            let mut out = stdout.lock();
-            let _ = writeln!(out, "{}", r.markdown);
-        }
-        Err(e) => {
-            eprintln!("error: {e}");
-        }
+        Ok(r) => write_stdout_line(&r.markdown),
+        Err(e) => eprintln!("error: {e}"),
     }
 }
 
-/// Prints a JSON error to stdout.
+/// Prints a JSON error object to stdout.
 pub fn emit_json_error(msg: &str, url: Option<&str>) {
     let e = FetchError::new(msg, url.map(str::to_owned));
-    emit_json::<FetchResult>(&Err(e));
-}
-
-/// Writes a JSON object (pretty-printed) to stdout.
-fn emit_json<T>(result: &Result<T, FetchError>)
-where
-    T: serde::Serialize,
-{
-    let rendered = match result {
-        Ok(r) => serde_json::to_string_pretty(r),
-        Err(e) => serde_json::to_string_pretty(e),
-    };
-    if let Ok(s) = rendered {
-        let stdout = io::stdout();
-        let mut out = stdout.lock();
-        let _ = writeln!(out, "{s}");
-    }
+    write_json_pretty(&e);
 }
 
 /// Writes Markdown to file or stdout.
-pub fn write_markdown(cli: &Cli, md: &str) {
+fn write_markdown(cli: &Cli, md: &str) {
     if let Some(path) = &cli.output {
-        fs::write(path, md).unwrap_or_else(|e| {
+        if let Err(e) = fs::write(path, md) {
             eprintln!("error: cannot write {}: {e}", path.display());
-            process::exit(1);
-        });
-        eprintln!("Written to {}", path.display());
+        } else {
+            eprintln!("Written to {}", path.display());
+        }
     } else {
         let stdout = io::stdout();
         let mut out = stdout.lock();
         let _ = out.write_all(md.as_bytes());
         let _ = out.write_all(b"\n");
     }
+}
+
+/// Writes a pretty-printed JSON value to stdout.
+fn write_json_pretty(value: &impl serde::Serialize) {
+    if let Ok(s) = serde_json::to_string_pretty(value) {
+        write_stdout_line(&s);
+    }
+}
+
+/// Writes a single line to stdout, silently ignoring broken-pipe errors.
+fn write_stdout_line(line: &str) {
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
+    let _ = writeln!(out, "{line}");
 }
