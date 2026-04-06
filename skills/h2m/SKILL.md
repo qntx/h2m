@@ -255,7 +255,7 @@ h2m --selector article --gfm https://blog.example.com/post -o article.md
 | `<blockquote>`                           | `> quoted text`                           |
 | `<hr>`                                   | `---`                                     |
 | `<br>`                                   | Hard line break                           |
-| `<iframe>`                               | Removed (never useful in markdown)        |
+| `<iframe>`                               | `[iframe](url)`                           |
 
 ### GFM Extensions (with `--gfm`)
 

@@ -456,10 +456,10 @@ fn line_break_hard() {
 }
 
 #[test]
-fn iframe_removed() {
+fn iframe_rendered_as_link() {
     assert_eq!(
         convert(r#"<iframe src="https://example.com/embed"></iframe>"#),
-        ""
+        "[iframe](https://example.com/embed)"
     );
 }
 
@@ -508,9 +508,12 @@ fn domain_with_protocol_preserves_scheme() {
 }
 
 #[test]
-fn iframe_with_domain_removed() {
+fn domain_resolves_relative_iframe() {
     let c = with_domain("example.com");
-    assert_eq!(c.convert(r#"<iframe src="/embed/video"></iframe>"#), "");
+    assert_eq!(
+        c.convert(r#"<iframe src="/embed/video"></iframe>"#),
+        "[iframe](https://example.com/embed/video)"
+    );
 }
 
 #[test]

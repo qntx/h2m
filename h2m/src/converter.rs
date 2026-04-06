@@ -322,8 +322,7 @@ impl Converter {
         let tag = element.value().name();
 
         // Check if this tag should be removed entirely.
-        if self.remove_tags.contains(tag)
-            || matches!(tag, "script" | "style" | "noscript" | "head" | "iframe")
+        if self.remove_tags.contains(tag) || matches!(tag, "script" | "style" | "noscript" | "head")
         {
             return String::new();
         }
