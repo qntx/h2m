@@ -311,12 +311,9 @@ fn render_children(
                 let tag = el.name();
                 let _ = write!(buf, "<{tag}");
                 for (name, val) in el.attrs() {
-                    let escaped = val
-                        .replace('&', "&amp;")
-                        .replace('"', "&quot;")
-                        .replace('<', "&lt;")
-                        .replace('>', "&gt;");
-                    let _ = write!(buf, r#" {name}="{escaped}""#);
+                    let _ = write!(buf, " {name}=\"");
+                    escape_attr_value(val, buf);
+                    buf.push('"');
                 }
                 buf.push('>');
                 if !is_void_element(tag) {
@@ -328,6 +325,20 @@ fn render_children(
                 render_children(child, skip, buf);
             }
             _ => {}
+        }
+    }
+}
+
+/// Escapes HTML attribute value characters in a single pass, writing directly
+/// into `buf` without intermediate allocations.
+fn escape_attr_value(val: &str, buf: &mut String) {
+    for c in val.chars() {
+        match c {
+            '&' => buf.push_str("&amp;"),
+            '"' => buf.push_str("&quot;"),
+            '<' => buf.push_str("&lt;"),
+            '>' => buf.push_str("&gt;"),
+            _ => buf.push(c),
         }
     }
 }

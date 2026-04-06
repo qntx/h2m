@@ -34,12 +34,11 @@ pub fn escape_markdown(text: &str, mode: EscapeMode) -> Cow<'_, str> {
         } else if i == 0 || text.as_bytes().get(i.wrapping_sub(1)) == Some(&b'\n') {
             // Check for line-start patterns that could be interpreted as
             // markdown structure.
-            if let Some(escaped) = escape_line_start(&text[i..]) {
-                result.push_str(&escaped);
-                // `escaped` = 1 added backslash + N original chars.
+            let consumed = write_escaped_line_start(&text[i..], &mut result);
+            if consumed > 0 {
                 // The main loop already consumed the first original char,
-                // so advance past the remaining N − 1 = len − 2.
-                for _ in 0..escaped.len().saturating_sub(2) {
+                // so advance past the remaining consumed − 1.
+                for _ in 0..consumed - 1 {
                     let _ = chars.next();
                 }
             } else {
@@ -59,25 +58,31 @@ const fn is_line_start_trigger(c: char) -> bool {
     matches!(c, '#' | '>' | '-' | '+') || c.is_ascii_digit()
 }
 
-/// If the text at the current position starts with a markdown structural
-/// pattern, returns an escaped version.
-fn escape_line_start(text: &str) -> Option<String> {
+/// If `text` starts with a markdown structural pattern, writes the escaped
+/// version into `out` and returns the number of original characters consumed.
+/// Returns 0 when no pattern matches (nothing written).
+fn write_escaped_line_start(text: &str, out: &mut String) -> usize {
     // Heading: "# ", "## ", etc.
     if text.starts_with('#') {
-        let hashes = text.chars().take_while(|&c| c == '#').count();
+        let hashes = text.bytes().take_while(|&b| b == b'#').count();
         if text.get(hashes..hashes + 1) == Some(" ") && hashes <= 6 {
-            return Some(format!("\\{}", &text[..=hashes]));
+            out.push('\\');
+            out.push_str(&text[..=hashes]);
+            return hashes + 1;
         }
     }
 
     // Blockquote: "> "
     if text.starts_with("> ") {
-        return Some("\\> ".to_owned());
+        out.push_str("\\> ");
+        return 2;
     }
 
     // Unordered list: "- ", "+ "
     if text.starts_with("- ") || text.starts_with("+ ") {
-        return Some(format!("\\{}", &text[..2]));
+        out.push('\\');
+        out.push_str(&text[..2]);
+        return 2;
     }
 
     // Ordered list: "1. ", "2. ", etc.
@@ -85,16 +90,21 @@ fn escape_line_start(text: &str) -> Option<String> {
         let digit_len = text.bytes().take_while(u8::is_ascii_digit).count();
         let rest = &text[digit_len..];
         if rest.starts_with(". ") || rest.starts_with(") ") {
-            return Some(format!("{}\\{}", &text[..digit_len], &rest[..2]));
+            out.push_str(&text[..digit_len]);
+            out.push('\\');
+            out.push_str(&rest[..2]);
+            return digit_len + 2;
         }
     }
 
     // Thematic breaks: "---", "***", "___"
     if text.starts_with("---") || text.starts_with("***") || text.starts_with("___") {
-        return Some(format!("\\{}", &text[..1]));
+        out.push('\\');
+        out.push_str(&text[..1]);
+        return 1;
     }
 
-    None
+    0
 }
 
 #[cfg(test)]

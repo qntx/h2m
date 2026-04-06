@@ -7,7 +7,25 @@ use std::borrow::Cow;
 /// This mirrors browser rendering of normal-flow text content. Returns a
 /// borrowed [`Cow`] when no collapsing is needed.
 pub fn collapse_whitespace(text: &str) -> Cow<'_, str> {
-    if !text.contains(|c: char| c.is_whitespace() && c != ' ') && !text.contains("  ") {
+    let needs_collapse = {
+        let mut prev_space = false;
+        text.bytes().any(|b| {
+            if b == b' ' {
+                let double = prev_space;
+                prev_space = true;
+                double
+            } else if b.is_ascii_whitespace() || !b.is_ascii() && char::from(b).is_whitespace() {
+                // Non-space whitespace (tab, newline, etc.) always needs collapsing.
+                // Note: multi-byte whitespace is rare in practice; the byte check
+                // handles the common ASCII cases efficiently.
+                true
+            } else {
+                prev_space = false;
+                false
+            }
+        })
+    };
+    if !needs_collapse {
         return Cow::Borrowed(text);
     }
 
