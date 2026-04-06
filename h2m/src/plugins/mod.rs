@@ -7,6 +7,7 @@ pub(crate) mod task_list;
 use strikethrough::Strikethrough;
 use table::{TableCellRule, TableRowRule, TableRule, TableSectionRule};
 use task_list::TaskList;
+
 use crate::converter::{ConverterBuilder, Plugin};
 
 /// GFM plugin — adds table, strikethrough, and task list rules.
