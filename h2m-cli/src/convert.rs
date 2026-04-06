@@ -56,7 +56,7 @@ fn build_converter(cli: &Cli) -> Converter {
 ///
 /// # Errors
 ///
-/// Returns `CliError` on fetch failures, I/O errors, or file read errors.
+/// Returns `CliError` on scrape failures, I/O errors, or file read errors.
 pub async fn run(cli: &Cli) -> Result<(), CliError> {
     let inputs = collect_inputs(cli)?;
 

@@ -2,16 +2,17 @@
 name: h2m
 description: >-
   HTML-to-Markdown converter CLI tool. Use when the user asks to convert HTML
-  to Markdown, scrape web pages to Markdown, batch-fetch multiple URLs, extract
+  to Markdown, scrape web pages to Markdown, batch-scrape multiple URLs, extract
   structured data from web pages via JSON output, or transform HTML files.
   Supports CommonMark, GFM (tables, strikethrough, task lists), async batch
-  fetching with concurrency control, JSON/NDJSON structured output,
-  reference-style links, CSS selector extraction, and relative URL resolution.
+  scraping with concurrency control, JSON/NDJSON structured output with nested
+  camelCase metadata, reference-style links, CSS selector extraction, smart
+  readable extraction, and relative URL resolution.
 ---
 
 # H2M — HTML-to-Markdown Converter
 
-`h2m` is an async CLI tool that converts HTML into clean Markdown. It supports **CommonMark** and **GitHub Flavored Markdown** (tables, strikethrough, task lists), **JSON/NDJSON structured output** for agent consumption, **async batch fetching** with concurrency control, reference-style links, CSS selector extraction, and relative-to-absolute URL resolution.
+`h2m` is an async CLI tool that converts HTML into clean Markdown. It supports **CommonMark** and **GitHub Flavored Markdown** (tables, strikethrough, task lists), **JSON/NDJSON structured output** with nested camelCase metadata for agent consumption, **async batch scraping** with concurrency control, reference-style links, CSS selector extraction, smart readable extraction, and relative-to-absolute URL resolution.
 
 ## Installation
 
@@ -114,17 +115,28 @@ JSON output schema (single URL):
 
 ```json
 {
-  "url": "https://example.com",
-  "domain": "example.com",
-  "title": "Example Domain",
   "markdown": "# Example Domain\n\n...",
-  "links": ["/about", "/contact"],
-  "elapsed_ms": 234,
-  "content_length": 1256
+  "metadata": {
+    "title": "Example Domain",
+    "description": "This domain is for use in illustrative examples.",
+    "language": "en",
+    "ogImage": "https://example.com/og.png",
+    "sourceUrl": "https://example.com",
+    "url": "https://example.com/",
+    "statusCode": 200,
+    "contentType": "text/html; charset=UTF-8",
+    "elapsedMs": 234
+  },
+  "links": ["https://example.com/about", "https://example.com/contact"]
 }
 ```
 
-Fields `url`, `domain`, `title`, `links` are omitted when not applicable (e.g. stdin input, `--extract-links` not set).
+Key fields:
+
+- **`sourceUrl`** — the original requested URL
+- **`url`** — the final URL after HTTP 3xx and meta-refresh redirects
+- **`links`** — only present when `--extract-links` is set
+- **`description`**, **`ogImage`** — omitted when not present in the page
 
 ### Batch Mode & Concurrency
 
@@ -275,13 +287,14 @@ h2m --selector article --gfm https://blog.example.com/post -o article.md
 
 ## Agent Best Practices
 
-1. **Use `--json` for structured output** — always prefer `--json` when consuming h2m output programmatically. It provides URL, domain, title, markdown, links, timing, and content length in a single JSON object. For batch operations, output is NDJSON (one JSON per line) for easy streaming.
+1. **Use `--json` for structured output** — always prefer `--json` when consuming h2m output programmatically. JSON uses **camelCase** field names and a nested `metadata` object containing title, description, language, ogImage, sourceUrl, url, statusCode, contentType, and elapsedMs. For batch operations, output is NDJSON (one JSON per line) for easy streaming.
 2. **Use `--json --extract-links`** to get both the converted markdown and all page links in one call — useful for crawling or building site maps.
-3. **Batch multiple URLs** by passing them as arguments or via `--urls file.txt`. Requests run concurrently (default 4, configurable with `-j`). Use `--delay` for rate limiting.
-4. **Use `--readable` for web scraping** to automatically extract main content and strip navigation, footers, and boilerplate. Use `--selector` when you need precise control over which element to extract.
-5. **Use `--gfm`** when the source HTML contains tables, strikethrough, or checkboxes — without it, these elements are passed through as raw HTML or ignored.
-6. **Domain is auto-detected** when the input is a URL. Only set `--domain` manually when piping HTML from stdin or converting local files with relative URLs.
-7. **Reference-style links** (`--link-style referenced`) produce cleaner output for documents with many links, keeping the prose readable and link URLs in a footer section.
-8. **Pipe-friendly**: `h2m` reads from stdin when no input is given, and writes to stdout by default. Use `-o` to save directly to a file.
-9. **CSS selectors** support any valid CSS selector syntax: tag names (`article`), IDs (`#content`), classes (`.post-body`), combinators (`main > article`), etc.
-10. **Error handling**: CLI exits with code 1 on errors. With `--json`, errors are output as JSON objects (`{"error": "...", "url": "..."}`). Without `--json`, errors go to stderr. In batch mode, individual failures don't stop other URLs from being processed.
+3. **Check `sourceUrl` vs `url`** — `sourceUrl` is the original request; `url` is the final URL after HTTP 3xx and meta-refresh redirects. Compare them to detect redirects.
+4. **Batch multiple URLs** by passing them as arguments or via `--urls file.txt`. Requests run concurrently (default 4, configurable with `-j`). Use `--delay` for rate limiting.
+5. **Use `--readable` for web scraping** to automatically extract main content and strip navigation, footers, and boilerplate. Use `--selector` when you need precise control over which element to extract.
+6. **Use `--gfm`** when the source HTML contains tables, strikethrough, or checkboxes — without it, these elements are passed through as raw HTML or ignored.
+7. **Domain is auto-detected** when the input is a URL. Only set `--domain` manually when piping HTML from stdin or converting local files with relative URLs.
+8. **Reference-style links** (`--link-style referenced`) produce cleaner output for documents with many links, keeping the prose readable and link URLs in a footer section.
+9. **Pipe-friendly**: `h2m` reads from stdin when no input is given, and writes to stdout by default. Use `-o` to save directly to a file.
+10. **CSS selectors** support any valid CSS selector syntax: tag names (`article`), IDs (`#content`), classes (`.post-body`), combinators (`main > article`), etc.
+11. **Error handling**: CLI exits with code 1 on errors. With `--json`, errors are output as JSON objects (`{"error": "...", "url": "..."}`). Without `--json`, errors go to stderr. In batch mode, individual failures don't stop other URLs from being processed.

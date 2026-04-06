@@ -21,7 +21,7 @@
 
 **Fast, extensible HTML-to-Markdown converter for Rust — CommonMark + GFM, plugin architecture, zero `unsafe`.**
 
-H2M converts HTML into clean Markdown with full CommonMark compliance and GitHub Flavored Markdown extensions. It uses a plugin-based rule system, supports reference-style links, relative URL resolution, and ships with an async CLI powered by `tokio` for high-concurrency batch fetching.
+H2M converts HTML into clean Markdown with full CommonMark compliance and GitHub Flavored Markdown extensions. It uses a plugin-based rule system, supports reference-style links, relative URL resolution, and ships with an async CLI powered by `tokio` for high-concurrency batch scraping.
 
 <p align="center">
   <img src="demo.gif" alt="H2M CLI Demo"/>
@@ -91,18 +91,23 @@ Single URL produces a pretty-printed JSON object:
 
 ```json
 {
-  "url": "https://example.com",
-  "domain": "example.com",
-  "status_code": 200,
-  "content_type": "text/html; charset=UTF-8",
-  "title": "Example Domain",
-  "language": "en",
-  "description": "This domain is for use in illustrative examples.",
   "markdown": "# Example Domain\n\n...",
-  "elapsed_ms": 234,
-  "content_length": 1256
+  "metadata": {
+    "title": "Example Domain",
+    "description": "This domain is for use in illustrative examples.",
+    "language": "en",
+    "ogImage": "https://example.com/og.png",
+    "sourceUrl": "https://example.com",
+    "url": "https://example.com/",
+    "statusCode": 200,
+    "contentType": "text/html; charset=UTF-8",
+    "elapsedMs": 234
+  },
+  "links": ["https://example.com/about"]
 }
 ```
+
+`sourceUrl` is the original request; `url` is the final URL after redirects. `links` only appears with `--extract-links`.
 
 Multiple URLs produce NDJSON (one JSON object per line), ideal for streaming pipelines.
 
@@ -131,26 +136,26 @@ let md = converter.convert(r#"<a href="/about">About</a>"#);
 assert_eq!(md, "[About](https://example.com/about)");
 ```
 
-### Async Fetching
+### Async Scraping
 
-Enable the `fetch` feature for async HTTP fetching with built-in concurrency control, rate limiting, and streaming output:
+Enable the `scrape` feature for async HTTP scraping with built-in concurrency control, rate limiting, and streaming output:
 
 ```rust,no_run
-use h2m::fetch::Fetcher;
+use h2m::scrape::Scraper;
 
-let fetcher = Fetcher::builder()
+let scraper = Scraper::builder()
     .concurrency(8)
     .gfm(true)
     .extract_links(true)
     .build()?;
 
-// Single fetch
-let result = fetcher.fetch("https://example.com").await?;
+// Single scrape
+let result = scraper.scrape("https://example.com").await?;
 println!("{}", result.markdown);
 
 // Batch with streaming callback
 let urls = vec!["https://a.com".into(), "https://b.com".into()];
-fetcher.fetch_many_streaming(&urls, |result| {
+scraper.scrape_many_streaming(&urls, |result| {
     match result {
         Ok(r) => println!("{}", r.markdown),
         Err(e) => eprintln!("error: {e}"),
@@ -162,10 +167,10 @@ fetcher.fetch_many_streaming(&urls, |result| {
 
 - **CommonMark + GFM** — full spec compliance with tables, strikethrough, task lists, reference-style links
 - **Plugin architecture** — extend with custom rules via the `Rule` trait
-- **Async batch pipeline** — `tokio` + `reqwest`, semaphore concurrency, streaming NDJSON (feature-gated)
-- **JSON output** — structured result with rich metadata (status, language, description, og:image) for agent/programmatic consumption
+- **Async batch pipeline** — `tokio` + `reqwest`, semaphore concurrency, streaming NDJSON (`scrape` feature)
+- **JSON output** — nested camelCase metadata (title, description, language, ogImage, sourceUrl/url, statusCode, contentType, elapsedMs) for agent/programmatic consumption
 - **Smart readable extraction** — two-phase content detection: semantic selectors → noise stripping (`nav`, `footer`, `aside`, `header`, ARIA roles)
-- **Smart fetching** — configurable User-Agent, HTML meta-refresh redirect following
+- **Smart scraping** — configurable User-Agent, HTTP 3xx + HTML meta-refresh redirect following (including `<noscript>`-wrapped)
 - **Zero-copy fast paths** — `Cow<str>` escaping, zero `unsafe`, `Send + Sync`
 
 ## Conversion Examples
