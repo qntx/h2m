@@ -25,7 +25,7 @@ impl CliError {
     /// Returns the URL associated with this error, if any.
     pub fn url(&self) -> Option<&str> {
         match self {
-            Self::Fetch(e) => e.url.as_deref(),
+            Self::Fetch(e) => e.url(),
             Self::Io(_) => None,
             Self::Other { url, .. } => url.as_deref(),
         }

@@ -18,9 +18,9 @@ pub async fn fetch_html_inner(
             .get(&current_url)
             .send()
             .await
-            .map_err(|e| FetchError {
-                error: format!("failed to fetch {current_url}: {e}"),
-                url: Some(current_url.clone()),
+            .map_err(|e| FetchError::Http {
+                message: e.to_string(),
+                url: current_url.clone(),
             })?;
 
         let meta = ResponseMeta {
@@ -32,9 +32,9 @@ pub async fn fetch_html_inner(
                 .map(str::to_owned),
         };
 
-        let body = resp.text().await.map_err(|e| FetchError {
-            error: format!("failed to read response body: {e}"),
-            url: Some(current_url.clone()),
+        let body = resp.text().await.map_err(|e| FetchError::Http {
+            message: format!("failed to read response body: {e}"),
+            url: current_url.clone(),
         })?;
 
         if let Some(target) = extract_meta_refresh(&body, &current_url) {
@@ -45,10 +45,7 @@ pub async fn fetch_html_inner(
         return Ok((body, meta));
     }
 
-    Err(FetchError {
-        error: format!("too many meta-refresh redirects (max {MAX_META_REDIRECTS})"),
-        url: Some(current_url),
-    })
+    Err(FetchError::TooManyRedirects { url: current_url })
 }
 
 /// Extracts the redirect URL from a `<meta http-equiv="refresh">` tag, if

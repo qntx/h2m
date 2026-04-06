@@ -81,25 +81,82 @@ pub struct FetchResult {
 }
 
 /// Error returned by fetch operations.
-#[derive(Debug, Serialize, thiserror::Error)]
-#[error("{error}")]
+#[derive(Debug, Clone, thiserror::Error)]
 #[non_exhaustive]
 #[allow(clippy::module_name_repetitions)]
-pub struct FetchError {
-    /// Error message.
-    pub error: String,
-    /// URL that caused the error, if applicable.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
+pub enum FetchError {
+    /// HTTP request or response body decoding failed.
+    #[error("HTTP error for {url}: {message}")]
+    Http {
+        /// Human-readable error description.
+        message: String,
+        /// URL that caused the error.
+        url: String,
+    },
+
+    /// Too many `<meta http-equiv="refresh">` hops.
+    #[error("too many meta-refresh redirects for {url}")]
+    TooManyRedirects {
+        /// URL that started the redirect chain.
+        url: String,
+    },
+
+    /// Failed to construct the underlying HTTP client.
+    #[error("failed to build HTTP client: {message}")]
+    ClientBuild {
+        /// Underlying error description.
+        message: String,
+    },
+
+    /// A spawned task panicked before producing a result.
+    #[error("task panicked: {message}")]
+    TaskPanicked {
+        /// Panic payload description.
+        message: String,
+    },
+
+    /// Catch-all for errors that don't fit other variants.
+    #[error("{message}")]
+    Other {
+        /// Human-readable error description.
+        message: String,
+        /// URL that caused the error, if applicable.
+        url: Option<String>,
+    },
 }
 
 impl FetchError {
-    /// Creates a new `FetchError` with an error message and optional URL.
+    /// Creates a new [`FetchError::Other`] with an error message and optional URL.
     #[must_use]
     pub fn new(error: impl Into<String>, url: Option<String>) -> Self {
-        Self {
-            error: error.into(),
+        Self::Other {
+            message: error.into(),
             url,
         }
+    }
+
+    /// Returns the URL associated with this error, if any.
+    #[must_use]
+    pub fn url(&self) -> Option<&str> {
+        match self {
+            Self::Http { url, .. }
+            | Self::TooManyRedirects { url }
+            | Self::Other { url: Some(url), .. } => Some(url),
+            _ => None,
+        }
+    }
+}
+
+impl Serialize for FetchError {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let url = self.url();
+        let field_count = if url.is_some() { 2 } else { 1 };
+        let mut state = serializer.serialize_struct("FetchError", field_count)?;
+        state.serialize_field("error", &self.to_string())?;
+        if let Some(u) = url {
+            state.serialize_field("url", u)?;
+        }
+        state.end()
     }
 }

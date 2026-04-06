@@ -166,9 +166,8 @@ impl FetcherBuilder {
             .user_agent(&self.user_agent)
             .timeout(self.timeout)
             .build()
-            .map_err(|e| FetchError {
-                error: format!("failed to build HTTP client: {e}"),
-                url: None,
+            .map_err(|e| FetchError::ClientBuild {
+                message: e.to_string(),
             })?;
 
         let mut builder = Converter::builder()
@@ -280,9 +279,8 @@ impl Fetcher {
         for handle in handles {
             match handle.await {
                 Ok(result) => results.push(result),
-                Err(e) => results.push(Err(FetchError {
-                    error: format!("task panicked: {e}"),
-                    url: None,
+                Err(e) => results.push(Err(FetchError::TaskPanicked {
+                    message: e.to_string(),
                 })),
             }
         }
