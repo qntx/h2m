@@ -252,9 +252,13 @@ impl Rule for HighlightRule {
     }
 }
 
-let converter = Converter::builder()
-    .use_plugin(CommonMark)
-    .build();
+let mut builder = Converter::builder()
+    .use_plugin(CommonMark);
+builder.add_rule(HighlightRule);
+let converter = builder.build();
+
+let md = converter.convert("<p>This is <mark>important</mark></p>");
+assert!(md.contains("==important=="));
 ```
 
 ## License
