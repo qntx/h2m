@@ -7,7 +7,7 @@ resolver = "3"
 version = "0.2.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/qntx/h2m"
+repository = "https://github.com/qntx-labs/h2m"
 description = "HTML to Markdown converter."
 keywords = ["html", "markdown", "converter"]
 categories = ["command-line-utilities"]
@@ -20,7 +20,7 @@ scraper = "0.26"
 ego-tree = "0.11"
 thiserror = "2"
 clap = { version = "4", features = ["derive"] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls-native-roots"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls"] }
 url = "2"
 pretty_assertions = "1"
 

@@ -7,7 +7,7 @@
 
 $ErrorActionPreference = "Stop"
 $InformationPreference = "Continue"
-$Repo = "qntx/h2m"
+$Repo = "qntx-labs/h2m"
 $Bin = "h2m"
 
 $BinUpper = $Bin.ToUpper()

@@ -396,6 +396,7 @@ fn remove_tags() {
 }
 
 #[test]
+#[allow(clippy::unwrap_used)]
 fn convert_reader_works() {
     let converter = h2m::Converter::builder()
         .use_plugin(h2m::rules::CommonMark)
