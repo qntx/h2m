@@ -15,119 +15,19 @@
 //! # }
 //! ```
 
+mod client;
+mod pipeline;
+mod types;
+
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
 use tokio::sync::Semaphore;
+pub(crate) use types::{ContentExtraction, ConvertConfig, ResponseMeta};
+#[allow(clippy::module_name_repetitions)]
+pub use types::{FetchError, FetchResult};
 
-use crate::converter::{Converter, ConverterBuilder};
-use crate::html;
 use crate::options::Options;
-use crate::plugins::Gfm;
-use crate::rules::CommonMark;
-
-/// How to extract content from the HTML document before conversion.
-#[derive(Debug, Clone, Default)]
-enum ContentExtraction {
-    /// Use the full document.
-    #[default]
-    Full,
-    /// Apply an explicit CSS selector.
-    Selector(String),
-    /// Smart readable extraction: semantic selectors → noise stripping.
-    Readable,
-}
-
-/// Bundled conversion parameters passed to spawned tasks.
-#[derive(Debug, Clone)]
-struct ConvertConfig {
-    /// Converter options.
-    options: Options,
-    /// Enable GFM.
-    gfm: bool,
-    /// Extract links.
-    extract_links: bool,
-    /// Base domain for resolving relative URLs.
-    domain: Option<String>,
-    /// Content extraction strategy.
-    content: ContentExtraction,
-}
-
-/// HTTP response metadata returned alongside the HTML body.
-#[derive(Debug, Clone, Default)]
-struct ResponseMeta {
-    /// HTTP status code.
-    status_code: Option<u16>,
-    /// `Content-Type` header value.
-    content_type: Option<String>,
-}
-
-/// Successful conversion result with metadata.
-///
-/// Fields are grouped: source → HTTP → document → content → metrics.
-#[derive(Debug, Serialize)]
-#[non_exhaustive]
-#[allow(clippy::module_name_repetitions)]
-pub struct FetchResult {
-    /// Source URL (if input was a URL).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
-    /// Resolved domain name.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub domain: Option<String>,
-    /// HTTP status code of the final response.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status_code: Option<u16>,
-    /// `Content-Type` header of the response.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub content_type: Option<String>,
-    /// Page `<title>` text.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    /// Document language from `<html lang="…">`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub language: Option<String>,
-    /// Page description from `<meta name="description">`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    /// Open Graph image URL from `<meta property="og:image">`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub og_image: Option<String>,
-    /// Converted Markdown content.
-    pub markdown: String,
-    /// Extracted links (when enabled).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub links: Option<Vec<String>>,
-    /// Total elapsed time in milliseconds.
-    pub elapsed_ms: u64,
-    /// Original HTML byte length.
-    pub content_length: usize,
-}
-
-/// Error returned by fetch operations.
-#[derive(Debug, Serialize, thiserror::Error)]
-#[error("{error}")]
-#[non_exhaustive]
-#[allow(clippy::module_name_repetitions)]
-pub struct FetchError {
-    /// Error message.
-    pub error: String,
-    /// URL that caused the error, if applicable.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
-}
-
-impl FetchError {
-    /// Creates a new `FetchError` with an error message and optional URL.
-    #[must_use]
-    pub fn new(error: impl Into<String>, url: Option<String>) -> Self {
-        Self {
-            error: error.into(),
-            url,
-        }
-    }
-}
 
 /// Default User-Agent header value.
 const DEFAULT_USER_AGENT: &str = concat!("h2m/", env!("CARGO_PKG_VERSION"));
@@ -210,9 +110,11 @@ impl FetcherBuilder {
     /// Mutually exclusive with [`selector`](Self::selector).
     #[must_use]
     pub fn readable(mut self, enable: bool) -> Self {
-        if enable {
-            self.content = ContentExtraction::Readable;
-        }
+        self.content = if enable {
+            ContentExtraction::Readable
+        } else {
+            ContentExtraction::Full
+        };
         self
     }
 
@@ -317,9 +219,15 @@ impl Fetcher {
     /// cannot be decoded.
     pub async fn fetch(&self, url: &str) -> Result<FetchResult, FetchError> {
         let start = Instant::now();
-        let (raw_html, meta) = self.fetch_html(url).await?;
+        let (raw_html, meta) = client::fetch_html_inner(&self.client, url).await?;
         let cfg = self.config();
-        Ok(convert_to_result(Some(url), &raw_html, start, &cfg, &meta))
+        Ok(pipeline::convert_to_result(
+            Some(url),
+            &raw_html,
+            start,
+            &cfg,
+            &meta,
+        ))
     }
 
     /// Fetches and converts multiple URLs concurrently.
@@ -346,8 +254,8 @@ impl Fetcher {
                 let _permit = permit;
                 let start = Instant::now();
 
-                let (raw_html, meta) = fetch_html_inner(&cli, &owned_url).await?;
-                Ok(convert_to_result(
+                let (raw_html, meta) = client::fetch_html_inner(&cli, &owned_url).await?;
+                Ok(pipeline::convert_to_result(
                     Some(&owned_url),
                     &raw_html,
                     start,
@@ -404,10 +312,10 @@ impl Fetcher {
                     let start = Instant::now();
 
                     let result =
-                        fetch_html_inner(&cli, &owned_url)
+                        client::fetch_html_inner(&cli, &owned_url)
                             .await
                             .map(|(raw_html, meta)| {
-                                convert_to_result(
+                                pipeline::convert_to_result(
                                     Some(&owned_url),
                                     &raw_html,
                                     start,
@@ -435,7 +343,7 @@ impl Fetcher {
     pub fn convert_html(&self, raw_html: &str) -> FetchResult {
         let start = Instant::now();
         let cfg = self.config();
-        convert_to_result(None, raw_html, start, &cfg, &ResponseMeta::default())
+        pipeline::convert_to_result(None, raw_html, start, &cfg, &ResponseMeta::default())
     }
 
     /// Builds a `ConvertConfig` snapshot from current fetcher state.
@@ -448,159 +356,4 @@ impl Fetcher {
             content: self.content.clone(),
         }
     }
-
-    /// Fetches raw HTML from a URL.
-    async fn fetch_html(&self, url: &str) -> Result<(String, ResponseMeta), FetchError> {
-        fetch_html_inner(&self.client, url).await
-    }
-}
-
-/// Maximum number of `<meta http-equiv="refresh">` hops to follow.
-const MAX_META_REDIRECTS: usize = 3;
-
-/// Fetches HTML from a URL using the given client, following meta-refresh
-/// redirects up to [`MAX_META_REDIRECTS`] times.
-async fn fetch_html_inner(
-    client: &reqwest::Client,
-    url: &str,
-) -> Result<(String, ResponseMeta), FetchError> {
-    let mut current_url = url.to_owned();
-
-    for _ in 0..=MAX_META_REDIRECTS {
-        let resp = client
-            .get(&current_url)
-            .send()
-            .await
-            .map_err(|e| FetchError {
-                error: format!("failed to fetch {current_url}: {e}"),
-                url: Some(current_url.clone()),
-            })?;
-
-        let meta = ResponseMeta {
-            status_code: Some(resp.status().as_u16()),
-            content_type: resp
-                .headers()
-                .get(reqwest::header::CONTENT_TYPE)
-                .and_then(|v| v.to_str().ok())
-                .map(str::to_owned),
-        };
-
-        let body = resp.text().await.map_err(|e| FetchError {
-            error: format!("failed to read response body: {e}"),
-            url: Some(current_url.clone()),
-        })?;
-
-        if let Some(target) = extract_meta_refresh(&body, &current_url) {
-            current_url = target;
-            continue;
-        }
-
-        return Ok((body, meta));
-    }
-
-    Err(FetchError {
-        error: format!("too many meta-refresh redirects (max {MAX_META_REDIRECTS})"),
-        url: Some(current_url),
-    })
-}
-
-/// Extracts the redirect URL from a `<meta http-equiv="refresh">` tag, if
-/// present. Returns `None` if the page has no such redirect.
-fn extract_meta_refresh(html: &str, base_url: &str) -> Option<String> {
-    let doc = scraper::Html::parse_document(html);
-    let sel = scraper::Selector::parse("meta[http-equiv=\"refresh\" i]").ok()?;
-    let meta = doc.select(&sel).next()?;
-    let content = meta.value().attr("content")?;
-
-    // Format: "0;url=https://..." or "0; url=https://..."
-    let lower = content.to_ascii_lowercase();
-    let url_start = lower.find("url=")?;
-    let raw_target = content[url_start + 4..].trim().trim_matches(['"', '\'']);
-
-    if raw_target.is_empty() {
-        return None;
-    }
-
-    // Resolve relative redirect targets against the current URL.
-    url::Url::parse(base_url).map_or_else(
-        |_| Some(raw_target.to_owned()),
-        |base| base.join(raw_target).ok().map(|u| u.to_string()),
-    )
-}
-
-/// Single unified conversion path: raw HTML → `FetchResult`.
-///
-/// Parses the HTML once, then reuses the parsed document for title extraction,
-/// link extraction, and CSS selection.
-fn convert_to_result(
-    url: Option<&str>,
-    raw_html: &str,
-    start: Instant,
-    cfg: &ConvertConfig,
-    resp: &ResponseMeta,
-) -> FetchResult {
-    let content_length = raw_html.len();
-    let doc = scraper::Html::parse_document(raw_html);
-
-    let html_to_convert = match &cfg.content {
-        ContentExtraction::Full => raw_html.to_owned(),
-        ContentExtraction::Selector(sel) => html::select_doc(&doc, raw_html, sel),
-        ContentExtraction::Readable => html::readable_content_doc(&doc, raw_html),
-    };
-
-    let title = html::extract_title_doc(&doc);
-    let language = html::extract_language_doc(&doc);
-    let description = html::extract_description_doc(&doc);
-    let og_image = html::extract_og_image_doc(&doc);
-
-    let parsed_url = url.and_then(|u| url::Url::parse(u).ok());
-    let auto_domain = parsed_url
-        .as_ref()
-        .and_then(|u| u.host_str().map(str::to_owned));
-    let domain = cfg.domain.as_deref().or(auto_domain.as_deref());
-
-    let links = if cfg.extract_links {
-        Some(html::extract_links_doc(&doc, parsed_url.as_ref()))
-    } else {
-        None
-    };
-    let md = convert_raw(&cfg.options, cfg.gfm, &html_to_convert, domain);
-
-    FetchResult {
-        url: url.map(str::to_owned),
-        domain: domain.map(str::to_owned),
-        status_code: resp.status_code,
-        content_type: resp.content_type.clone(),
-        title,
-        language,
-        description,
-        og_image,
-        markdown: md,
-        links,
-        elapsed_ms: elapsed_ms(start),
-        content_length,
-    }
-}
-
-/// Builds a converter and runs the conversion.
-fn convert_raw(options: &Options, gfm: bool, html: &str, domain: Option<&str>) -> String {
-    let mut builder: ConverterBuilder = Converter::builder()
-        .options(*options)
-        .use_plugin(CommonMark);
-
-    if gfm {
-        builder = builder.use_plugin(Gfm);
-    }
-
-    if let Some(d) = domain {
-        builder = builder.domain(d);
-    }
-
-    builder.build().convert(html)
-}
-
-/// Returns elapsed milliseconds since `start`.
-#[allow(clippy::cast_possible_truncation)]
-fn elapsed_ms(start: Instant) -> u64 {
-    start.elapsed().as_millis() as u64
 }
