@@ -711,3 +711,71 @@ fn convert_reader_from_byte_slice() {
     let md = c.convert_reader(&b"<h1>Hello</h1>"[..]).unwrap();
     assert_eq!(md, "# Hello");
 }
+
+#[test]
+fn div_treated_as_block_container() {
+    assert_eq!(convert("<div>content</div>"), "content");
+}
+
+#[test]
+fn section_treated_as_block_container() {
+    assert_eq!(convert("<section><p>inside</p></section>"), "inside");
+}
+
+#[test]
+fn samp_tag_rendered_as_inline_code() {
+    assert_eq!(convert("<p>output: <samp>42</samp></p>"), "output: `42`");
+}
+
+#[test]
+fn tt_tag_rendered_as_inline_code() {
+    assert_eq!(convert("<p>use <tt>monospace</tt></p>"), "use `monospace`");
+}
+
+#[test]
+fn multiple_br_produces_multiple_hard_breaks() {
+    assert_eq!(convert("<p>a<br/>b<br/>c</p>"), "a  \nb  \nc");
+}
+
+#[test]
+fn code_block_class_fallback_to_first_class() {
+    assert_eq!(
+        convert(r#"<pre><code class="ruby">puts 1</code></pre>"#),
+        "```ruby\nputs 1\n```"
+    );
+}
+
+#[test]
+fn link_referenced_full_with_title() {
+    let c = ref_converter(h2m::LinkReferenceStyle::Full);
+    let md = c.convert(r#"<p><a href="https://example.com" title="Example">click</a></p>"#);
+    assert!(md.contains("[click][1]"));
+    assert!(md.contains(r#"[1]: https://example.com "Example""#));
+}
+
+#[test]
+fn blockquote_multi_paragraph() {
+    let md = convert("<blockquote><p>first</p><p>second</p></blockquote>");
+    let lines: Vec<&str> = md.lines().collect();
+    assert!(lines.iter().all(|l| l.starts_with('>')));
+    assert!(md.contains("first"));
+    assert!(md.contains("second"));
+}
+
+#[test]
+fn strong_multiline_wraps_per_line() {
+    assert_eq!(
+        convert("<p><strong>line1<br/>line2</strong></p>"),
+        "**line1**\n**line2**"
+    );
+}
+
+#[test]
+fn link_multiline_content_escaped() {
+    let md = convert(
+        r#"<p><a href="https://example.com">line1
+line2</a></p>"#,
+    );
+    assert!(md.contains("[line1"));
+    assert!(md.contains("](https://example.com)"));
+}

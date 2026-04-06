@@ -41,6 +41,37 @@ pub(crate) fn wrap_delimiter_per_line(text: &str, delimiter: &str) -> String {
     result
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrap_single_line() {
+        assert_eq!(wrap_delimiter_per_line("bold", "**"), "**bold**");
+    }
+
+    #[test]
+    fn wrap_multiline() {
+        assert_eq!(
+            wrap_delimiter_per_line("line1\nline2", "**"),
+            "**line1**\n**line2**"
+        );
+    }
+
+    #[test]
+    fn wrap_multiline_preserves_blank_line() {
+        assert_eq!(
+            wrap_delimiter_per_line("line1\n\nline2", "**"),
+            "**line1**\n\n**line2**"
+        );
+    }
+
+    #[test]
+    fn wrap_single_char_delimiter() {
+        assert_eq!(wrap_delimiter_per_line("text", "*"), "*text*");
+    }
+}
+
 /// The `CommonMark` plugin — registers all built-in rules for standard HTML
 /// tags.
 ///

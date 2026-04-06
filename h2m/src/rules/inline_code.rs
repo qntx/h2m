@@ -66,3 +66,33 @@ fn collapse_newlines(text: &str) -> String {
     }
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn collapse_no_newlines() {
+        assert_eq!(collapse_newlines("hello world"), "hello world");
+    }
+
+    #[test]
+    fn collapse_single_newline_preserved() {
+        assert_eq!(collapse_newlines("a\nb"), "a\nb");
+    }
+
+    #[test]
+    fn collapse_multiple_newlines() {
+        assert_eq!(collapse_newlines("a\n\n\nb"), "a\nb");
+    }
+
+    #[test]
+    fn collapse_empty() {
+        assert_eq!(collapse_newlines(""), "");
+    }
+
+    #[test]
+    fn collapse_trailing_newlines() {
+        assert_eq!(collapse_newlines("a\n\n"), "a\n");
+    }
+}

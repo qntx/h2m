@@ -279,3 +279,52 @@ fn write_separator(out: &mut String, header_cells: &[TableCell], col_widths: &[u
         out.push_str(" |");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn alignment_from_attr() {
+        assert_eq!(parse_alignment(Some("left"), None), Alignment::Left);
+        assert_eq!(parse_alignment(Some("center"), None), Alignment::Center);
+        assert_eq!(parse_alignment(Some("right"), None), Alignment::Right);
+    }
+
+    #[test]
+    fn alignment_attr_case_insensitive() {
+        assert_eq!(parse_alignment(Some("LEFT"), None), Alignment::Left);
+        assert_eq!(parse_alignment(Some("Center"), None), Alignment::Center);
+    }
+
+    #[test]
+    fn alignment_from_style() {
+        assert_eq!(
+            parse_alignment(None, Some("text-align: center")),
+            Alignment::Center
+        );
+        assert_eq!(
+            parse_alignment(None, Some("text-align: right")),
+            Alignment::Right
+        );
+        assert_eq!(
+            parse_alignment(None, Some("text-align: left")),
+            Alignment::Left
+        );
+    }
+
+    #[test]
+    fn alignment_attr_takes_precedence_over_style() {
+        assert_eq!(
+            parse_alignment(Some("left"), Some("text-align: right")),
+            Alignment::Left
+        );
+    }
+
+    #[test]
+    fn alignment_none_fallback() {
+        assert_eq!(parse_alignment(None, None), Alignment::None);
+        assert_eq!(parse_alignment(Some("invalid"), None), Alignment::None);
+        assert_eq!(parse_alignment(None, Some("color: red")), Alignment::None);
+    }
+}

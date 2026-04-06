@@ -118,3 +118,54 @@ fn extract_markdown_image_url(md: &str) -> Option<&str> {
     url.find([' ', '\t'])
         .map_or(Some(url), |idx| Some(url[..idx].trim()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escape_multiline_no_newlines() {
+        assert_eq!(escape_multiline("hello"), "hello");
+    }
+
+    #[test]
+    fn escape_multiline_with_newlines() {
+        assert_eq!(escape_multiline("line1\nline2"), "line1\\\nline2");
+    }
+
+    #[test]
+    fn escape_multiline_trims_whitespace() {
+        assert_eq!(escape_multiline("  hello  "), "hello");
+    }
+
+    #[test]
+    fn extract_image_url_basic() {
+        assert_eq!(
+            extract_markdown_image_url("![alt](https://example.com/img.png)"),
+            Some("https://example.com/img.png")
+        );
+    }
+
+    #[test]
+    fn extract_image_url_with_title() {
+        assert_eq!(
+            extract_markdown_image_url(r#"![alt](img.png "title")"#),
+            Some("img.png")
+        );
+    }
+
+    #[test]
+    fn extract_image_url_empty_alt() {
+        assert_eq!(extract_markdown_image_url("![](img.png)"), Some("img.png"));
+    }
+
+    #[test]
+    fn extract_image_url_not_image() {
+        assert_eq!(extract_markdown_image_url("[text](url)"), None);
+    }
+
+    #[test]
+    fn extract_image_url_no_closing_paren() {
+        assert_eq!(extract_markdown_image_url("![alt](img.png"), None);
+    }
+}

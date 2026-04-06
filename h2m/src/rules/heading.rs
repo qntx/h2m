@@ -71,3 +71,24 @@ fn heading_level(tag: &str) -> usize {
         })
         .unwrap_or(1)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn level_h1_through_h6() {
+        assert_eq!(heading_level("h1"), 1);
+        assert_eq!(heading_level("h2"), 2);
+        assert_eq!(heading_level("h3"), 3);
+        assert_eq!(heading_level("h4"), 4);
+        assert_eq!(heading_level("h5"), 5);
+        assert_eq!(heading_level("h6"), 6);
+    }
+
+    #[test]
+    fn level_invalid_defaults_to_1() {
+        assert_eq!(heading_level("h"), 1);
+        assert_eq!(heading_level("hx"), 1);
+    }
+}

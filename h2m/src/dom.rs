@@ -112,3 +112,38 @@ pub fn add_space_if_necessary(element: &ElementRef<'_>, markdown: String) -> Str
 
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn max_consecutive_empty() {
+        assert_eq!(max_consecutive_char("", '`'), 0);
+    }
+
+    #[test]
+    fn max_consecutive_no_match() {
+        assert_eq!(max_consecutive_char("hello world", '`'), 0);
+    }
+
+    #[test]
+    fn max_consecutive_single() {
+        assert_eq!(max_consecutive_char("a`b", '`'), 1);
+    }
+
+    #[test]
+    fn max_consecutive_multiple_runs_picks_longest() {
+        assert_eq!(max_consecutive_char("``a```b`", '`'), 3);
+    }
+
+    #[test]
+    fn max_consecutive_entire_string() {
+        assert_eq!(max_consecutive_char("~~~~", '~'), 4);
+    }
+
+    #[test]
+    fn max_consecutive_at_boundaries() {
+        assert_eq!(max_consecutive_char("``hello``", '`'), 2);
+    }
+}

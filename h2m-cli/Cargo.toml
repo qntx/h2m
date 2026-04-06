@@ -14,7 +14,7 @@ name = "h2m"
 path = "src/main.rs"
 
 [dependencies]
-h2m = { path = "../h2m" }
+h2m.workspace = true
 clap.workspace = true
 reqwest.workspace = true
 url.workspace = true

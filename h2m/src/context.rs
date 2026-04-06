@@ -230,3 +230,83 @@ impl Context {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use super::*;
+
+    fn make_ctx(domain: Option<String>) -> Context {
+        Context::new(Options::default(), domain)
+    }
+
+    #[test]
+    fn resolve_no_domain() {
+        let ctx = make_ctx(None);
+        assert_eq!(ctx.resolve_url("/about"), "/about");
+        assert!(matches!(ctx.resolve_url("/about"), Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn resolve_empty_domain() {
+        let ctx = make_ctx(Some(String::new()));
+        assert_eq!(ctx.resolve_url("/about"), "/about");
+    }
+
+    #[test]
+    fn resolve_absolute_url_unchanged() {
+        let ctx = make_ctx(Some("example.com".to_owned()));
+        let r = ctx.resolve_url("https://other.com/page");
+        assert_eq!(r, "https://other.com/page");
+        assert!(matches!(r, Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn resolve_relative_with_bare_domain() {
+        let ctx = make_ctx(Some("example.com".to_owned()));
+        assert_eq!(ctx.resolve_url("/about"), "http://example.com/about");
+    }
+
+    #[test]
+    fn resolve_relative_with_protocol() {
+        let ctx = make_ctx(Some("https://example.com".to_owned()));
+        assert_eq!(ctx.resolve_url("/about"), "https://example.com/about");
+    }
+
+    #[test]
+    fn resolve_protocol_relative_url() {
+        let ctx = make_ctx(Some("https://example.com".to_owned()));
+        assert_eq!(
+            ctx.resolve_url("//cdn.example.com/a.js"),
+            "https://cdn.example.com/a.js"
+        );
+    }
+
+    #[test]
+    fn push_reference_increments_index() {
+        let mut ctx = make_ctx(None);
+        assert_eq!(ctx.push_reference("[1]: https://a.com".to_owned()), 1);
+        assert_eq!(ctx.push_reference("[2]: https://b.com".to_owned()), 2);
+        assert!(ctx.has_references());
+    }
+
+    #[test]
+    fn take_references_joins_and_resets() {
+        let mut ctx = make_ctx(None);
+        ctx.push_reference("[1]: https://a.com".to_owned());
+        ctx.push_reference("[2]: https://b.com".to_owned());
+
+        let refs = ctx.take_references();
+        assert_eq!(refs, "[1]: https://a.com\n[2]: https://b.com");
+        assert!(!ctx.has_references());
+        assert_eq!(ctx.link_index, 0);
+    }
+
+    #[test]
+    fn take_references_empty() {
+        let mut ctx = make_ctx(None);
+        assert!(!ctx.has_references());
+        assert_eq!(ctx.take_references(), "");
+    }
+}
