@@ -195,7 +195,7 @@ impl FetcherBuilder {
 
     /// Sets an explicit CSS selector to extract before converting.
     ///
-    /// Mutually exclusive with [`auto_main`](Self::auto_main).
+    /// Mutually exclusive with [`readable`](Self::readable).
     #[must_use]
     pub fn selector(mut self, selector: impl Into<String>) -> Self {
         self.content = ContentExtraction::Selector(selector.into());

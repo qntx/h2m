@@ -197,6 +197,42 @@ fn main() {}
 ​```
 ```
 
+## Supported HTML Elements
+
+### CommonMark (built-in)
+
+| Element                                  | Markdown Output                           |
+| ---------------------------------------- | ----------------------------------------- |
+| `<h1>`-`<h6>`                            | `# Heading` (ATX) or underline (Setext)   |
+| `<p>`, `<div>`, `<section>`, `<article>` | Block paragraph                           |
+| `<strong>`, `<b>`                        | `**bold**`                                |
+| `<em>`, `<i>`                            | `*italic*`                                |
+| `<code>`, `<kbd>`, `<samp>`, `<tt>`      | `` `inline code` ``                       |
+| `<pre><code>`                            | Fenced code block with language detection |
+| `<a href="...">`                         | `[text](url)` or reference-style          |
+| `<img src="..." alt="...">`              | `![alt](src "title")`                     |
+| `<ul>`, `<ol>`, `<li>`                   | Bullet/numbered lists with nesting        |
+| `<blockquote>`                           | `> quoted text`                           |
+| `<hr>`                                   | `---`                                     |
+| `<br>`                                   | Hard line break                           |
+| `<iframe>`                               | `[iframe](url)`                           |
+
+### GFM Extensions (with `--gfm`)
+
+| Element                     | Markdown Output               |
+| --------------------------- | ----------------------------- |
+| `<table>`                   | GFM pipe table with alignment |
+| `<del>`, `<s>`, `<strike>`  | `~~strikethrough~~`           |
+| `<input type="checkbox">`   | `[x]` or `[ ]` (task list)    |
+
+### Auto-removed
+
+| Element      | Behavior                    |
+| ------------ | --------------------------- |
+| `<script>`   | Removed (content stripped)  |
+| `<style>`    | Removed (content stripped)  |
+| `<noscript>` | Removed (content stripped)  |
+
 ## Custom Rules
 
 Extend the converter with your own rules by implementing the `Rule` trait:

@@ -311,7 +311,12 @@ fn render_children(
                 let tag = el.name();
                 let _ = write!(buf, "<{tag}");
                 for (name, val) in el.attrs() {
-                    let _ = write!(buf, r#" {name}="{val}""#);
+                    let escaped = val
+                        .replace('&', "&amp;")
+                        .replace('"', "&quot;")
+                        .replace('<', "&lt;")
+                        .replace('>', "&gt;");
+                    let _ = write!(buf, r#" {name}="{escaped}""#);
                 }
                 buf.push('>');
                 if !is_void_element(tag) {
