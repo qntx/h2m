@@ -3,11 +3,7 @@
 use std::time::Instant;
 
 use super::types::{ContentExtraction, ConvertConfig, FetchResult, ResponseMeta};
-use crate::converter::{Converter, ConverterBuilder};
 use crate::html;
-use crate::options::Options;
-use crate::plugins::Gfm;
-use crate::rules::CommonMark;
 
 /// Single unified conversion path: raw HTML → `FetchResult`.
 ///
@@ -45,7 +41,7 @@ pub fn convert_to_result(
     } else {
         None
     };
-    let md = convert_raw(&cfg.options, cfg.gfm, &html_to_convert, domain);
+    let md = cfg.converter.convert(&html_to_convert);
 
     FetchResult {
         url: url.map(str::to_owned),
@@ -61,23 +57,6 @@ pub fn convert_to_result(
         elapsed_ms: elapsed_ms(start),
         content_length,
     }
-}
-
-/// Builds a converter and runs the conversion.
-fn convert_raw(options: &Options, gfm: bool, html: &str, domain: Option<&str>) -> String {
-    let mut builder: ConverterBuilder = Converter::builder()
-        .options(*options)
-        .use_plugin(CommonMark);
-
-    if gfm {
-        builder = builder.use_plugin(Gfm);
-    }
-
-    if let Some(d) = domain {
-        builder = builder.domain(d);
-    }
-
-    builder.build().convert(html)
 }
 
 /// Returns elapsed milliseconds since `start`.

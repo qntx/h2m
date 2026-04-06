@@ -27,7 +27,10 @@ pub(crate) use types::{ContentExtraction, ConvertConfig, ResponseMeta};
 #[allow(clippy::module_name_repetitions)]
 pub use types::{FetchError, FetchResult};
 
+use crate::converter::Converter;
 use crate::options::Options;
+use crate::plugins::Gfm;
+use crate::rules::CommonMark;
 
 /// Default User-Agent header value.
 const DEFAULT_USER_AGENT: &str = concat!("h2m/", env!("CARGO_PKG_VERSION"));
@@ -168,13 +171,26 @@ impl FetcherBuilder {
                 url: None,
             })?;
 
-        Ok(Fetcher {
-            client,
-            options: self.options,
-            gfm: self.gfm,
+        let mut builder = Converter::builder()
+            .options(self.options)
+            .use_plugin(CommonMark);
+        if self.gfm {
+            builder = builder.use_plugin(Gfm);
+        }
+        if let Some(d) = &self.domain {
+            builder = builder.domain(d);
+        }
+
+        let config = ConvertConfig {
+            converter: builder.build(),
+            extract_links: self.extract_links,
             domain: self.domain,
             content: self.content,
-            extract_links: self.extract_links,
+        };
+
+        Ok(Fetcher {
+            client,
+            config,
             concurrency: self.concurrency.max(1),
             delay: self.delay,
         })
@@ -188,16 +204,8 @@ impl FetcherBuilder {
 pub struct Fetcher {
     /// HTTP client.
     client: reqwest::Client,
-    /// Converter options.
-    options: Options,
-    /// Enable GFM.
-    gfm: bool,
-    /// Base domain override.
-    domain: Option<String>,
-    /// Content extraction strategy.
-    content: ContentExtraction,
-    /// Extract links.
-    extract_links: bool,
+    /// Pre-built conversion config (contains cached `Converter`).
+    config: ConvertConfig,
     /// Max concurrency.
     concurrency: usize,
     /// Inter-request delay.
@@ -220,12 +228,11 @@ impl Fetcher {
     pub async fn fetch(&self, url: &str) -> Result<FetchResult, FetchError> {
         let start = Instant::now();
         let (raw_html, meta) = client::fetch_html_inner(&self.client, url).await?;
-        let cfg = self.config();
         Ok(pipeline::convert_to_result(
             Some(url),
             &raw_html,
             start,
-            &cfg,
+            &self.config,
             &meta,
         ))
     }
@@ -239,7 +246,7 @@ impl Fetcher {
         urls: &[S],
     ) -> Vec<Result<FetchResult, FetchError>> {
         let sem = Arc::new(Semaphore::new(self.concurrency));
-        let cfg = Arc::new(self.config());
+        let cfg = Arc::new(self.config.clone());
         let mut handles = Vec::with_capacity(urls.len());
 
         for (i, url) in urls.iter().enumerate() {
@@ -295,7 +302,7 @@ impl Fetcher {
 
         let urls_owned: Vec<String> = urls.iter().map(|s| s.as_ref().to_owned()).collect();
         let client = self.client.clone();
-        let cfg = Arc::new(self.config());
+        let cfg = Arc::new(self.config.clone());
         let delay = self.delay;
 
         let producer = tokio::spawn(async move {
@@ -347,18 +354,12 @@ impl Fetcher {
     #[must_use]
     pub fn convert_html(&self, raw_html: &str) -> FetchResult {
         let start = Instant::now();
-        let cfg = self.config();
-        pipeline::convert_to_result(None, raw_html, start, &cfg, &ResponseMeta::default())
-    }
-
-    /// Builds a `ConvertConfig` snapshot from current fetcher state.
-    fn config(&self) -> ConvertConfig {
-        ConvertConfig {
-            options: self.options,
-            gfm: self.gfm,
-            extract_links: self.extract_links,
-            domain: self.domain.clone(),
-            content: self.content.clone(),
-        }
+        pipeline::convert_to_result(
+            None,
+            raw_html,
+            start,
+            &self.config,
+            &ResponseMeta::default(),
+        )
     }
 }

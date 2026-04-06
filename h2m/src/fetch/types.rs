@@ -2,6 +2,8 @@
 
 use serde::Serialize;
 
+use crate::converter::Converter;
+
 /// How to extract content from the HTML document before conversion.
 #[derive(Debug, Clone, Default)]
 pub enum ContentExtraction {
@@ -17,10 +19,8 @@ pub enum ContentExtraction {
 /// Bundled conversion parameters passed to spawned tasks.
 #[derive(Debug, Clone)]
 pub struct ConvertConfig {
-    /// Converter options.
-    pub options: crate::options::Options,
-    /// Enable GFM.
-    pub gfm: bool,
+    /// Pre-built converter, cached to avoid per-call rebuilds.
+    pub converter: Converter,
     /// Extract links.
     pub extract_links: bool,
     /// Base domain for resolving relative URLs.

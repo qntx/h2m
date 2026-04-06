@@ -208,6 +208,18 @@ pub struct Converter {
     domain: Option<String>,
 }
 
+impl Clone for Converter {
+    fn clone(&self) -> Self {
+        Self {
+            options: self.options,
+            rules: self.rules.clone(),
+            keep_tags: self.keep_tags.clone(),
+            remove_tags: self.remove_tags.clone(),
+            domain: self.domain.clone(),
+        }
+    }
+}
+
 impl std::fmt::Debug for Converter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Converter")
@@ -250,7 +262,8 @@ impl Converter {
 
         // Traverse from the root element (<html>).
         let root_id = document.root_element().id();
-        let mut output = self.process_node(root_id, &document, &mut ctx);
+        let mut output = String::with_capacity(html.len());
+        self.write_node(root_id, &document, &mut ctx, &mut output);
 
         // Append reference-style link definitions if any.
         if ctx.has_references() {
@@ -272,59 +285,57 @@ impl Converter {
         Ok(self.convert(&html))
     }
 
-    /// Processes a DOM node and returns its markdown representation.
-    fn process_node(&self, node_id: NodeId, document: &Html, ctx: &mut Context) -> String {
+    /// Writes a DOM node's markdown representation into `buf`.
+    fn write_node(&self, node_id: NodeId, document: &Html, ctx: &mut Context, buf: &mut String) {
         let Some(node_ref) = document.tree.get(node_id) else {
-            return String::new();
+            return;
         };
 
         match node_ref.value() {
-            Node::Text(text) => Self::process_text(text, ctx),
+            Node::Text(text) => Self::write_text(text, ctx, buf),
             Node::Element(_) => {
-                let Some(element_ref) = ElementRef::wrap(node_ref) else {
-                    return String::new();
-                };
-                self.process_element(&element_ref, document, ctx)
+                if let Some(element_ref) = ElementRef::wrap(node_ref) {
+                    self.write_element(&element_ref, document, ctx, buf);
+                }
             }
             Node::Document => {
-                let mut combined = String::new();
                 for child in node_ref.children() {
-                    combined.push_str(&self.process_node(child.id(), document, ctx));
+                    self.write_node(child.id(), document, ctx, buf);
                 }
-                combined
             }
-            _ => String::new(),
+            _ => {}
         }
     }
 
-    /// Processes a text node.
-    fn process_text(text: &scraper::node::Text, ctx: &Context) -> String {
+    /// Writes a text node's content into `buf`.
+    fn write_text(text: &scraper::node::Text, ctx: &Context, buf: &mut String) {
         let raw: &str = text;
 
         if ctx.in_pre() {
-            return raw.to_owned();
+            buf.push_str(raw);
+            return;
         }
 
         let collapsed = whitespace::collapse_whitespace(raw);
         let escaped = escape::escape_markdown(&collapsed, ctx.options().escape_mode);
-
-        escaped.into_owned()
+        buf.push_str(&escaped);
     }
 
-    /// Processes an element node by converting children first, then applying
+    /// Writes an element node by converting children first, then applying
     /// rules.
-    fn process_element(
+    fn write_element(
         &self,
         element: &ElementRef<'_>,
         document: &Html,
         ctx: &mut Context,
-    ) -> String {
+        buf: &mut String,
+    ) {
         let tag = element.value().name();
 
         // Check if this tag should be removed entirely.
         if self.remove_tags.contains(tag) || matches!(tag, "script" | "style" | "noscript" | "head")
         {
-            return String::new();
+            return;
         }
 
         // Track preformatted context — suppress whitespace collapse and
@@ -334,13 +345,14 @@ impl Converter {
             ctx.set_in_pre(true);
         }
 
-        // Recursively convert children.
-        let mut content = String::new();
+        // Recursively convert children into a temporary buffer, since rules
+        // need the complete child content to decide their output.
+        let child_start = buf.len();
         let Some(node_ref) = document.tree.get(element.id()) else {
-            return String::new();
+            return;
         };
         for child in node_ref.children() {
-            content.push_str(&self.process_node(child.id(), document, ctx));
+            self.write_node(child.id(), document, ctx, buf);
         }
 
         // Restore `<pre>` context.
@@ -348,21 +360,32 @@ impl Converter {
 
         // Check if raw HTML should be kept.
         if self.keep_tags.contains(tag) {
-            return element.html();
+            let kept = element.html();
+            buf.truncate(child_start);
+            buf.push_str(&kept);
+            return;
         }
 
         // Dispatch to rules (LIFO — last registered wins).
         if let Some(rules) = self.rules.get(tag) {
+            // Extract child content for rule dispatch.
+            let content = buf[child_start..].to_owned();
             for rule in rules.iter().rev() {
                 match rule.apply(&content, element, &mut *ctx) {
-                    Action::Replace(md) => return md,
-                    Action::Remove => return String::new(),
+                    Action::Replace(md) => {
+                        buf.truncate(child_start);
+                        buf.push_str(&md);
+                        return;
+                    }
+                    Action::Remove => {
+                        buf.truncate(child_start);
+                        return;
+                    }
                     Action::Skip => {}
                 }
             }
         }
 
-        // No rule matched — transparent passthrough.
-        content
+        // No rule matched — children already written as transparent passthrough.
     }
 }
