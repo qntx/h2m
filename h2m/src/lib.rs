@@ -38,6 +38,8 @@
 //! assert_eq!(title.as_deref(), Some("Hello"));
 //! ```
 
+use std::sync::LazyLock;
+
 pub mod html;
 pub mod plugins;
 pub mod rules;
@@ -85,16 +87,19 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// ```
 #[must_use]
 pub fn convert(html: &str) -> String {
-    let converter = Converter::builder().use_plugin(rules::CommonMark).build();
-    converter.convert(html)
+    static CONVERTER: LazyLock<Converter> =
+        LazyLock::new(|| Converter::builder().use_plugin(rules::CommonMark).build());
+    CONVERTER.convert(html)
 }
 
 /// Converts HTML to Markdown with GFM (GitHub Flavored Markdown) extensions.
 #[must_use]
 pub fn convert_gfm(html: &str) -> String {
-    let converter = Converter::builder()
-        .use_plugin(rules::CommonMark)
-        .use_plugin(plugins::Gfm)
-        .build();
-    converter.convert(html)
+    static CONVERTER: LazyLock<Converter> = LazyLock::new(|| {
+        Converter::builder()
+            .use_plugin(rules::CommonMark)
+            .use_plugin(plugins::Gfm)
+            .build()
+    });
+    CONVERTER.convert(html)
 }

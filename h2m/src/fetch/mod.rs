@@ -234,8 +234,12 @@ impl Fetcher {
     ///
     /// Results are returned as they complete (unordered). Each result is
     /// independent — a failure for one URL does not affect others.
-    pub async fn fetch_many(&self, urls: &[String]) -> Vec<Result<FetchResult, FetchError>> {
+    pub async fn fetch_many<S: AsRef<str> + Sync>(
+        &self,
+        urls: &[S],
+    ) -> Vec<Result<FetchResult, FetchError>> {
         let sem = Arc::new(Semaphore::new(self.concurrency));
+        let cfg = Arc::new(self.config());
         let mut handles = Vec::with_capacity(urls.len());
 
         for (i, url) in urls.iter().enumerate() {
@@ -246,9 +250,9 @@ impl Fetcher {
             let Ok(permit) = Arc::clone(&sem).acquire_owned().await else {
                 break;
             };
-            let owned_url = url.clone();
+            let owned_url = url.as_ref().to_owned();
             let cli = self.client.clone();
-            let cfg = self.config();
+            let cfg_task = Arc::clone(&cfg);
 
             handles.push(tokio::spawn(async move {
                 let _permit = permit;
@@ -259,7 +263,7 @@ impl Fetcher {
                     Some(&owned_url),
                     &raw_html,
                     start,
-                    &cfg,
+                    &cfg_task,
                     &meta,
                 ))
             }));
@@ -280,17 +284,18 @@ impl Fetcher {
 
     /// Fetches and converts multiple URLs, calling `on_result` for each
     /// completed item. This enables streaming/NDJSON output.
-    pub async fn fetch_many_streaming<F>(&self, urls: &[String], mut on_result: F)
+    pub async fn fetch_many_streaming<S, F>(&self, urls: &[S], mut on_result: F)
     where
-        F: FnMut(Result<FetchResult, FetchError>),
+        S: AsRef<str> + Sync,
+        F: FnMut(Result<FetchResult, FetchError>) + Send,
     {
         let sem = Arc::new(Semaphore::new(self.concurrency));
         let (tx, mut rx) =
             tokio::sync::mpsc::channel::<Result<FetchResult, FetchError>>(self.concurrency * 2);
 
-        let urls_owned: Vec<String> = urls.to_vec();
+        let urls_owned: Vec<String> = urls.iter().map(|s| s.as_ref().to_owned()).collect();
         let client = self.client.clone();
-        let cfg = self.config();
+        let cfg = Arc::new(self.config());
         let delay = self.delay;
 
         let producer = tokio::spawn(async move {
@@ -305,7 +310,7 @@ impl Fetcher {
                 let tx_c = tx.clone();
                 let owned_url = url.clone();
                 let cli = client.clone();
-                let cfg_task = cfg.clone();
+                let cfg_task = Arc::clone(&cfg);
 
                 tokio::spawn(async move {
                     let _permit = permit;

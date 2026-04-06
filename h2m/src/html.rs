@@ -197,7 +197,7 @@ const NOISE_SELECTORS: &[&str] = &[
     "nav",
     "footer",
     "aside",
-    "header",
+    "body > header",
     "[role=\"navigation\"]",
     "[role=\"banner\"]",
     "[role=\"contentinfo\"]",
