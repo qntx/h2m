@@ -75,6 +75,22 @@ fn collect_text_inner(node: &NodeRef<'_, Node>, buf: &mut String) {
     }
 }
 
+/// Returns `true` if the given element has an ancestor matching any of the
+/// specified tag names.
+#[must_use]
+pub fn has_ancestor_any(element: &ElementRef<'_>, tags: &[&str]) -> bool {
+    let mut current = element.parent();
+    while let Some(parent) = current {
+        if let Some(el) = parent.value().as_element()
+            && tags.contains(&el.name())
+        {
+            return true;
+        }
+        current = parent.parent();
+    }
+    false
+}
+
 /// Adds a leading/trailing space around `markdown` if the neighbouring DOM
 /// text would otherwise run into the delimiter without whitespace.
 ///

@@ -42,9 +42,13 @@ impl Rule for Heading {
         let md = match ctx.options().heading_style() {
             HeadingStyle::Setext if level <= 2 => {
                 let underline_char = if level == 1 { '=' } else { '-' };
-                let underline =
-                    std::iter::repeat_n(underline_char, trimmed.len()).collect::<String>();
-                format!("\n\n{trimmed}\n{underline}\n\n")
+                let mut md = String::with_capacity(trimmed.len() * 2 + 5);
+                md.push_str("\n\n");
+                md.push_str(&trimmed);
+                md.push('\n');
+                md.extend(std::iter::repeat_n(underline_char, trimmed.len()));
+                md.push_str("\n\n");
+                md
             }
             _ => {
                 let prefix = ATX_PREFIXES[level - 1];

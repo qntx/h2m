@@ -4,6 +4,10 @@ use scraper::ElementRef;
 
 use crate::context::Context;
 use crate::converter::{Action, Rule};
+use crate::dom;
+
+/// Heading tags used to detect when `<hr>` is inside a heading.
+const HEADING_TAGS: &[&str] = &["h1", "h2", "h3", "h4", "h5", "h6"];
 
 /// Handles `<hr>` elements.
 ///
@@ -18,26 +22,11 @@ impl Rule for HorizontalRule {
     }
 
     fn apply(&self, _content: &str, element: &ElementRef<'_>, ctx: &mut Context<'_>) -> Action {
-        if is_inside_heading(element) {
+        if dom::has_ancestor_any(element, HEADING_TAGS) {
             return Action::Replace(String::new());
         }
 
         let rule = ctx.options().horizontal_rule().as_str();
         Action::Replace(format!("\n\n{rule}\n\n"))
     }
-}
-
-/// Returns `true` if the element is inside any heading tag (`h1`–`h6`).
-fn is_inside_heading(element: &ElementRef<'_>) -> bool {
-    let mut current = element.parent();
-    while let Some(parent) = current {
-        if let Some(el) = parent.value().as_element() {
-            let name = el.name();
-            if matches!(name, "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
-                return true;
-            }
-        }
-        current = parent.parent();
-    }
-    false
 }

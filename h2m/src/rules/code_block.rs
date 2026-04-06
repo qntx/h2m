@@ -36,8 +36,6 @@ impl CodeBlock {
         // fence character in the content.
         let max_run = dom::max_consecutive_char(content, fence_char);
         let fence_len = std::cmp::max(3, max_run + 1);
-        let fence: String = std::iter::repeat_n(fence_char, fence_len).collect();
-
         let lang_tag = language.as_deref().unwrap_or_default();
 
         // Trim a single leading/trailing newline from content (html5ever often
@@ -45,7 +43,17 @@ impl CodeBlock {
         let without_prefix = content.strip_prefix('\n').unwrap_or(content);
         let trimmed = without_prefix.strip_suffix('\n').unwrap_or(without_prefix);
 
-        Action::Replace(format!("\n\n{fence}{lang_tag}\n{trimmed}\n{fence}\n\n"))
+        let mut md = String::with_capacity(trimmed.len() + lang_tag.len() + fence_len * 2 + 6);
+        md.push_str("\n\n");
+        md.extend(std::iter::repeat_n(fence_char, fence_len));
+        md.push_str(lang_tag);
+        md.push('\n');
+        md.push_str(trimmed);
+        md.push('\n');
+        md.extend(std::iter::repeat_n(fence_char, fence_len));
+        md.push_str("\n\n");
+
+        Action::Replace(md)
     }
 
     /// Renders an indented code block (4-space indent).

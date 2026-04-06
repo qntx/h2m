@@ -7,7 +7,11 @@ use std::borrow::Cow;
 /// This mirrors browser rendering of normal-flow text content. Returns a
 /// borrowed [`Cow`] when no collapsing is needed.
 pub fn collapse_whitespace(text: &str) -> Cow<'_, str> {
-    let needs_collapse = {
+    // Fast path (byte-level): detects the common ASCII-only case without
+    // decoding chars. Returns `false` only when we can *prove* no collapsing
+    // is needed; conservatively returns `true` for non-ASCII bytes (which
+    // might be multi-byte whitespace such as NBSP U+00A0).
+    let maybe_needs_collapse = {
         let mut prev_space = false;
         text.bytes().any(|b| {
             if b == b' ' {
@@ -15,13 +19,9 @@ pub fn collapse_whitespace(text: &str) -> Cow<'_, str> {
                 prev_space = true;
                 double
             } else if b.is_ascii_whitespace() {
-                // Non-space ASCII whitespace (tab, newline, etc.) always needs
-                // collapsing.
                 true
             } else if !b.is_ascii() {
-                // Non-ASCII byte: may be part of a multi-byte whitespace char
-                // (e.g. NBSP U+00A0). Conservatively trigger the slow path which
-                // iterates by `char` and checks `is_whitespace()` correctly.
+                // Might be multi-byte whitespace — defer to char-level check.
                 true
             } else {
                 prev_space = false;
@@ -29,17 +29,25 @@ pub fn collapse_whitespace(text: &str) -> Cow<'_, str> {
             }
         })
     };
-    if !needs_collapse {
+    if !maybe_needs_collapse {
         return Cow::Borrowed(text);
     }
 
+    // Char-level pass: determines whether collapsing actually changes anything
+    // and, if so, produces the collapsed result in a single iteration.
     let mut result = String::with_capacity(text.len());
     let mut prev_ws = false;
+    let mut changed = false;
 
     for c in text.chars() {
         if c.is_whitespace() {
-            if !prev_ws {
+            if prev_ws {
+                changed = true;
+            } else {
                 result.push(' ');
+                if c != ' ' {
+                    changed = true;
+                }
             }
             prev_ws = true;
         } else {
@@ -48,7 +56,11 @@ pub fn collapse_whitespace(text: &str) -> Cow<'_, str> {
         }
     }
 
-    Cow::Owned(result)
+    if changed {
+        Cow::Owned(result)
+    } else {
+        Cow::Borrowed(text)
+    }
 }
 
 /// Cleans up raw converter output:

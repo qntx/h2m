@@ -91,7 +91,7 @@ const NOISE_SELECTORS: &[&str] = &[
 ];
 
 /// Auto-detects main content from a pre-parsed document.
-pub fn detect_main_content_doc(doc: &Html) -> Option<String> {
+fn detect_main_content_doc(doc: &Html) -> Option<String> {
     MAIN_CONTENT_SELECTORS
         .iter()
         .find_map(|sel| collect_inner_html(doc, sel))
@@ -114,7 +114,7 @@ pub fn readable_content_doc(doc: &Html, original: &str) -> String {
 ///
 /// Walks the DOM tree and re-serializes it while skipping subtrees that match
 /// [`NOISE_SELECTORS`]. Returns `original` unchanged if no noise is found.
-pub fn strip_noise_doc(doc: &Html, original: &str) -> String {
+fn strip_noise_doc(doc: &Html, original: &str) -> String {
     let noise_ids = collect_noise_ids(doc);
     if noise_ids.is_empty() {
         return original.to_owned();

@@ -37,16 +37,20 @@ impl Rule for InlineCode {
         // Calculate fence: use enough backticks to exceed the longest run.
         let max_backtick_run = dom::max_consecutive_char(&code, '`');
         let fence_len = max_backtick_run + 1;
-        let fence: String = std::iter::repeat_n('`', fence_len).collect();
-
         // If content starts or ends with a backtick, add a space for clarity.
-        let (pad_start, pad_end) = if code.starts_with('`') || code.ends_with('`') {
-            (" ", " ")
-        } else {
-            ("", "")
-        };
+        let needs_pad = code.starts_with('`') || code.ends_with('`');
 
-        let text = format!("{fence}{pad_start}{code}{pad_end}{fence}");
+        let mut text = String::with_capacity(code.len() + fence_len * 2 + 2);
+        text.extend(std::iter::repeat_n('`', fence_len));
+        if needs_pad {
+            text.push(' ');
+        }
+        text.push_str(&code);
+        if needs_pad {
+            text.push(' ');
+        }
+        text.extend(std::iter::repeat_n('`', fence_len));
+
         Action::Replace(dom::add_space_if_necessary(element, text))
     }
 }
