@@ -23,6 +23,10 @@
 
 H2M converts HTML into clean Markdown with full CommonMark compliance and GitHub Flavored Markdown extensions. It uses a plugin-based rule system, supports reference-style links, relative URL resolution, and ships with a CLI that can fetch and convert web pages directly.
 
+<p align="center">
+  <img src="demo.gif" alt="H2M CLI Demo"/>
+</p>
+
 ## Quick Start
 
 ### Install the CLI
@@ -89,6 +93,35 @@ let md = converter.convert(r#"<a href="/about">About</a>"#).unwrap();
 assert_eq!(md, "[About](http://example.com/about)");
 ```
 
+## Conversion Examples
+
+**Input HTML:**
+
+```html
+<h1>Title</h1>
+<p>A <strong>bold</strong> and <em>italic</em> paragraph with <a href="https://example.com">a link</a>.</p>
+<ul>
+  <li>First item</li>
+  <li>Second item</li>
+</ul>
+<pre><code class="language-rust">fn main() {}</code></pre>
+```
+
+**Output Markdown:**
+
+```markdown
+# Title
+
+A **bold** and *italic* paragraph with [a link](https://example.com).
+
+- First item
+- Second item
+
+​```rust
+fn main() {}
+​```
+```
+
 ## Design
 
 - **CommonMark compliant** — headings, paragraphs, emphasis, strong, code blocks, links, images, lists, blockquotes, horizontal rules, line breaks
@@ -101,6 +134,30 @@ assert_eq!(md, "[About](http://example.com/about)");
 - **Zero-copy fast paths** — `Cow<str>` for escaping and whitespace normalization; no allocation when input needs no transformation
 - **`Send + Sync`** — `Converter` is immutable after build, safe to share across threads (compile-time assertion)
 - **Strict linting** — Clippy `pedantic` + `nursery` + `correctness` (deny), zero warnings
+
+## Custom Rules
+
+Extend the converter with your own rules by implementing the `Rule` trait:
+
+```rust
+use h2m::{Converter, Rule, Action, Context};
+use h2m::rules::CommonMark;
+use scraper::ElementRef;
+
+struct HighlightRule;
+
+impl Rule for HighlightRule {
+    fn tags(&self) -> &'static [&'static str] { &["mark"] }
+
+    fn apply(&self, content: &str, _el: &ElementRef<'_>, _ctx: &mut Context) -> Action {
+        Action::Replace(format!("=={content}=="))
+    }
+}
+
+let converter = Converter::builder()
+    .use_plugin(CommonMark)
+    .build();
+```
 
 ## License
 
