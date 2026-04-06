@@ -1,4 +1,4 @@
-//! Shared utility functions.
+//! DOM traversal and inspection utilities.
 
 use ego_tree::NodeRef;
 use scraper::ElementRef;

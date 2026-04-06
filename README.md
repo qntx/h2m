@@ -72,7 +72,7 @@ h2m --gfm --heading-style setext --strong underscores --fence tilde page.html
 
 ```rust
 // One-liner with CommonMark defaults
-let md = h2m::convert("<h1>Hello</h1><p>World</p>").unwrap();
+let md = h2m::convert("<h1>Hello</h1><p>World</p>");
 assert_eq!(md, "# Hello\n\nWorld");
 ```
 
@@ -89,7 +89,7 @@ let converter = Converter::builder()
     .domain("example.com")
     .build();
 
-let md = converter.convert(r#"<a href="/about">About</a>"#).unwrap();
+let md = converter.convert(r#"<a href="/about">About</a>"#);
 assert_eq!(md, "[About](http://example.com/about)");
 ```
 

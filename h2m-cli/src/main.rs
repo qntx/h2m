@@ -101,6 +101,15 @@ enum HeadingStyle {
     Setext,
 }
 
+impl From<HeadingStyle> for h2m::HeadingStyle {
+    fn from(s: HeadingStyle) -> Self {
+        match s {
+            HeadingStyle::Atx => Self::Atx,
+            HeadingStyle::Setext => Self::Setext,
+        }
+    }
+}
+
 /// Bullet character for unordered lists.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum BulletStyle {
@@ -112,6 +121,16 @@ enum BulletStyle {
     Star,
 }
 
+impl From<BulletStyle> for h2m::BulletMarker {
+    fn from(s: BulletStyle) -> Self {
+        match s {
+            BulletStyle::Dash => Self::Dash,
+            BulletStyle::Plus => Self::Plus,
+            BulletStyle::Star => Self::Asterisk,
+        }
+    }
+}
+
 /// Code fence character style.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum FenceStyle {
@@ -121,6 +140,15 @@ enum FenceStyle {
     Tilde,
 }
 
+impl From<FenceStyle> for h2m::Fence {
+    fn from(s: FenceStyle) -> Self {
+        match s {
+            FenceStyle::Backtick => Self::Backtick,
+            FenceStyle::Tilde => Self::Tilde,
+        }
+    }
+}
+
 /// Emphasis delimiter style.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum EmStyle {
@@ -128,6 +156,15 @@ enum EmStyle {
     Star,
     /// Underscore: `_text_`.
     Underscore,
+}
+
+impl From<EmStyle> for h2m::EmDelimiter {
+    fn from(s: EmStyle) -> Self {
+        match s {
+            EmStyle::Star => Self::Asterisk,
+            EmStyle::Underscore => Self::Underscore,
+        }
+    }
 }
 
 /// Horizontal rule style.
@@ -141,6 +178,16 @@ enum HrStyle {
     Underscores,
 }
 
+impl From<HrStyle> for h2m::HorizontalRule {
+    fn from(s: HrStyle) -> Self {
+        match s {
+            HrStyle::Dashes => Self::Dashes,
+            HrStyle::Stars => Self::Asterisks,
+            HrStyle::Underscores => Self::Underscores,
+        }
+    }
+}
+
 /// Link rendering style.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum LinkStyleArg {
@@ -148,6 +195,15 @@ enum LinkStyleArg {
     Inlined,
     /// Reference-style: `[text][id]` with footer definitions.
     Referenced,
+}
+
+impl From<LinkStyleArg> for h2m::LinkStyle {
+    fn from(s: LinkStyleArg) -> Self {
+        match s {
+            LinkStyleArg::Inlined => Self::Inlined,
+            LinkStyleArg::Referenced => Self::Referenced,
+        }
+    }
 }
 
 /// Reference link identifier style.
@@ -161,6 +217,16 @@ enum LinkRefArg {
     Shortcut,
 }
 
+impl From<LinkRefArg> for h2m::LinkReferenceStyle {
+    fn from(s: LinkRefArg) -> Self {
+        match s {
+            LinkRefArg::Full => Self::Full,
+            LinkRefArg::Collapsed => Self::Collapsed,
+            LinkRefArg::Shortcut => Self::Shortcut,
+        }
+    }
+}
+
 /// Strong emphasis delimiter style.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum StrongStyle {
@@ -168,6 +234,15 @@ enum StrongStyle {
     Stars,
     /// Double underscores: `__bold__`.
     Underscores,
+}
+
+impl From<StrongStyle> for h2m::StrongDelimiter {
+    fn from(s: StrongStyle) -> Self {
+        match s {
+            StrongStyle::Stars => Self::Asterisks,
+            StrongStyle::Underscores => Self::Underscores,
+        }
+    }
 }
 
 fn main() {
@@ -212,42 +287,40 @@ fn parse_as_url(input: &str) -> Option<url::Url> {
 
 /// Reads HTML from URL, file, or stdin. Returns `(html, auto_domain)`.
 fn read_input(cli: &Cli) -> (String, Option<String>) {
-    match &cli.input {
-        Some(input) if parse_as_url(input).is_some() => {
-            let Some(parsed) = parse_as_url(input) else {
-                unreachable!("guard already checked");
-            };
-            let auto_domain = parsed.host_str().map(str::to_owned);
-            eprintln!("Fetching {input}...");
-            let body = reqwest::blocking::get(input)
-                .unwrap_or_else(|e| {
-                    eprintln!("error: failed to fetch {input}: {e}");
-                    process::exit(1);
-                })
-                .text()
-                .unwrap_or_else(|e| {
-                    eprintln!("error: failed to read response body: {e}");
-                    process::exit(1);
-                });
-            (body, auto_domain)
-        }
-        Some(input) if input != "-" => {
-            let path = PathBuf::from(input);
-            let html = fs::read_to_string(&path).unwrap_or_else(|e| {
-                eprintln!("error: cannot read {}: {e}", path.display());
-                process::exit(1);
-            });
-            (html, None)
-        }
+    let input = match &cli.input {
+        Some(s) if s != "-" => s,
         _ => {
             let mut buf = String::new();
             io::stdin().read_to_string(&mut buf).unwrap_or_else(|e| {
                 eprintln!("error: cannot read stdin: {e}");
                 process::exit(1);
             });
-            (buf, None)
+            return (buf, None);
         }
-    }
+    };
+
+    let Some(parsed) = parse_as_url(input) else {
+        let path = PathBuf::from(input);
+        let html = fs::read_to_string(&path).unwrap_or_else(|e| {
+            eprintln!("error: cannot read {}: {e}", path.display());
+            process::exit(1);
+        });
+        return (html, None);
+    };
+
+    let auto_domain = parsed.host_str().map(str::to_owned);
+    eprintln!("Fetching {input}...");
+    let body = reqwest::blocking::get(input)
+        .unwrap_or_else(|e| {
+            eprintln!("error: failed to fetch {input}: {e}");
+            process::exit(1);
+        })
+        .text()
+        .unwrap_or_else(|e| {
+            eprintln!("error: failed to read response body: {e}");
+            process::exit(1);
+        });
+    (body, auto_domain)
 }
 
 /// If `--selector` is given, extracts matching elements' inner HTML.
@@ -277,56 +350,21 @@ fn apply_selector(cli: &Cli, html: &str) -> String {
 
 /// Builds `h2m::Options` from CLI arguments.
 fn build_options(cli: &Cli) -> h2m::Options {
-    let mut options = h2m::Options::default();
-
-    options.heading_style = match cli.heading_style {
-        HeadingStyle::Atx => h2m::HeadingStyle::Atx,
-        HeadingStyle::Setext => h2m::HeadingStyle::Setext,
-    };
-
-    options.bullet_marker = match cli.bullet {
-        BulletStyle::Dash => h2m::BulletMarker::Dash,
-        BulletStyle::Plus => h2m::BulletMarker::Plus,
-        BulletStyle::Star => h2m::BulletMarker::Asterisk,
-    };
-
-    options.fence = match cli.fence {
-        FenceStyle::Backtick => h2m::Fence::Backtick,
-        FenceStyle::Tilde => h2m::Fence::Tilde,
-    };
-
-    options.em_delimiter = match cli.em {
-        EmStyle::Star => h2m::EmDelimiter::Asterisk,
-        EmStyle::Underscore => h2m::EmDelimiter::Underscore,
-    };
-
-    options.strong_delimiter = match cli.strong {
-        StrongStyle::Stars => h2m::StrongDelimiter::Asterisks,
-        StrongStyle::Underscores => h2m::StrongDelimiter::Underscores,
-    };
-
-    options.horizontal_rule = match cli.hr {
-        HrStyle::Dashes => h2m::HorizontalRule::Dashes,
-        HrStyle::Stars => h2m::HorizontalRule::Asterisks,
-        HrStyle::Underscores => h2m::HorizontalRule::Underscores,
-    };
+    let mut opts = h2m::Options::default()
+        .heading_style(cli.heading_style.into())
+        .bullet_marker(cli.bullet.into())
+        .fence(cli.fence.into())
+        .em_delimiter(cli.em.into())
+        .strong_delimiter(cli.strong.into())
+        .horizontal_rule(cli.hr.into())
+        .link_style(cli.link_style.into())
+        .link_reference_style(cli.link_ref.into());
 
     if cli.no_escape {
-        options.escape_mode = h2m::EscapeMode::Disabled;
+        opts = opts.escape_mode(h2m::EscapeMode::Disabled);
     }
 
-    options.link_style = match cli.link_style {
-        LinkStyleArg::Inlined => h2m::LinkStyle::Inlined,
-        LinkStyleArg::Referenced => h2m::LinkStyle::Referenced,
-    };
-
-    options.link_reference_style = match cli.link_ref {
-        LinkRefArg::Full => h2m::LinkReferenceStyle::Full,
-        LinkRefArg::Collapsed => h2m::LinkReferenceStyle::Collapsed,
-        LinkRefArg::Shortcut => h2m::LinkReferenceStyle::Shortcut,
-    };
-
-    options
+    opts
 }
 
 /// Writes the markdown output to file or stdout.

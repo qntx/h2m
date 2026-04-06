@@ -181,7 +181,16 @@ pub enum LinkReferenceStyle {
 
 /// Configuration options for the converter.
 ///
-/// Use [`Default::default()`] for sensible `CommonMark` defaults.
+/// Use [`Default::default()`] for sensible `CommonMark` defaults, then
+/// override individual fields with the provided setter methods:
+///
+/// ```
+/// use h2m::Options;
+///
+/// let opts = Options::default()
+///     .heading_style(h2m::HeadingStyle::Setext)
+///     .bullet_marker(h2m::BulletMarker::Asterisk);
+/// ```
 #[derive(Debug, Clone, Copy, Default)]
 #[non_exhaustive]
 pub struct Options {
@@ -205,4 +214,76 @@ pub struct Options {
     pub link_style: LinkStyle,
     /// Reference-style link identifier format.
     pub link_reference_style: LinkReferenceStyle,
+}
+
+impl Options {
+    /// Sets the heading rendering style.
+    #[must_use]
+    pub const fn heading_style(mut self, style: HeadingStyle) -> Self {
+        self.heading_style = style;
+        self
+    }
+
+    /// Sets the bullet character for unordered lists.
+    #[must_use]
+    pub const fn bullet_marker(mut self, marker: BulletMarker) -> Self {
+        self.bullet_marker = marker;
+        self
+    }
+
+    /// Sets the code block rendering style.
+    #[must_use]
+    pub const fn code_block_style(mut self, style: CodeBlockStyle) -> Self {
+        self.code_block_style = style;
+        self
+    }
+
+    /// Sets the fence character for fenced code blocks.
+    #[must_use]
+    pub const fn fence(mut self, fence: Fence) -> Self {
+        self.fence = fence;
+        self
+    }
+
+    /// Sets the delimiter for emphasis (italic) text.
+    #[must_use]
+    pub const fn em_delimiter(mut self, delim: EmDelimiter) -> Self {
+        self.em_delimiter = delim;
+        self
+    }
+
+    /// Sets the delimiter for strong emphasis (bold) text.
+    #[must_use]
+    pub const fn strong_delimiter(mut self, delim: StrongDelimiter) -> Self {
+        self.strong_delimiter = delim;
+        self
+    }
+
+    /// Sets the horizontal rule style.
+    #[must_use]
+    pub const fn horizontal_rule(mut self, rule: HorizontalRule) -> Self {
+        self.horizontal_rule = rule;
+        self
+    }
+
+    /// Sets the escape mode for markdown special characters.
+    #[must_use]
+    pub const fn escape_mode(mut self, mode: EscapeMode) -> Self {
+        self.escape_mode = mode;
+        self
+    }
+
+    /// Sets the link rendering style.
+    #[must_use]
+    pub const fn link_style(mut self, style: LinkStyle) -> Self {
+        self.link_style = style;
+        self
+    }
+
+    /// Sets the reference-style link identifier format.
+    #[must_use]
+    pub const fn link_reference_style(mut self, style: LinkReferenceStyle) -> Self {
+        self.link_reference_style = style;
+        self
+    }
 }

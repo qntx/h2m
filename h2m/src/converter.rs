@@ -246,7 +246,7 @@ impl Converter {
         let mut ctx = Context::new(self.options, self.domain.clone());
 
         // Pre-pass: compute list metadata.
-        ctx.annotate_lists(document.root_element().id(), &document, &self.options);
+        ctx.annotate_lists(document.root_element().id(), &document);
 
         // Traverse from the root element (<html>).
         let root_id = document.root_element().id();

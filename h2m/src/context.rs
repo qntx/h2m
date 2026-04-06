@@ -146,18 +146,12 @@ impl Context {
     }
 
     /// Pre-computes [`ListMetadata`] for every `<li>` element in the document.
-    pub(crate) fn annotate_lists(
-        &mut self,
-        root_id: NodeId,
-        document: &scraper::Html,
-        options: &Options,
-    ) {
-        Self::annotate_list_node(options, root_id, document, self, 0);
+    pub(crate) fn annotate_lists(&mut self, root_id: NodeId, document: &scraper::Html) {
+        Self::annotate_list_node(root_id, document, self, 0);
     }
 
     /// Recursively annotates list items with their prefix and indentation.
     fn annotate_list_node(
-        options: &Options,
         node_id: NodeId,
         document: &scraper::Html,
         ctx: &mut Self,
@@ -187,7 +181,7 @@ impl Context {
 
             let max_number = start + li_count.saturating_sub(1);
             let number_width = if is_ordered {
-                max_number.to_string().len()
+                digit_count(max_number)
             } else {
                 0
             };
@@ -199,7 +193,7 @@ impl Context {
                         let num = start + item_index;
                         format!("{num:>number_width$}. ")
                     } else {
-                        format!("{} ", options.bullet_marker.char())
+                        format!("{} ", ctx.options.bullet_marker.char())
                     };
                     let prefix_width = prefix.len();
 
@@ -213,7 +207,6 @@ impl Context {
                     );
 
                     Self::annotate_list_node(
-                        options,
                         child.id(),
                         document,
                         ctx,
@@ -225,10 +218,25 @@ impl Context {
             }
         } else {
             for child in node_ref.children() {
-                Self::annotate_list_node(options, child.id(), document, ctx, parent_indent);
+                Self::annotate_list_node(child.id(), document, ctx, parent_indent);
             }
         }
     }
+}
+
+/// Returns the number of decimal digits in `n`.
+#[inline]
+const fn digit_count(n: usize) -> usize {
+    if n == 0 {
+        return 1;
+    }
+    let mut count = 0;
+    let mut val = n;
+    while val > 0 {
+        val /= 10;
+        count += 1;
+    }
+    count
 }
 
 #[cfg(test)]
