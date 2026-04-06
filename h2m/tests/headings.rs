@@ -24,8 +24,7 @@ fn headings_atx_h4_through_h6() {
 
 #[test]
 fn headings_setext_h1_and_h2() {
-    let mut opts = Options::default();
-    opts.heading_style = h2m::HeadingStyle::Setext;
+    let opts = Options::default().heading_style(h2m::HeadingStyle::Setext);
     let c = with_options(opts);
     assert_eq!(
         c.convert("<h1>Title</h1><h2>Sub</h2>"),
@@ -35,8 +34,7 @@ fn headings_setext_h1_and_h2() {
 
 #[test]
 fn headings_setext_falls_back_to_atx_at_h3() {
-    let mut opts = Options::default();
-    opts.heading_style = h2m::HeadingStyle::Setext;
+    let opts = Options::default().heading_style(h2m::HeadingStyle::Setext);
     let c = with_options(opts);
     assert_eq!(c.convert("<h3>Three</h3>"), "### Three");
 }

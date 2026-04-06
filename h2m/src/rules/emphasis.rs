@@ -29,7 +29,7 @@ impl Rule for Emphasis {
         let mut delim_buf = [0u8; 4];
         let delim = ctx
             .options()
-            .em_delimiter
+            .get_em_delimiter()
             .char()
             .encode_utf8(&mut delim_buf);
         let wrapped = super::wrap_delimiter_per_line(trimmed, delim);

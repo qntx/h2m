@@ -47,8 +47,8 @@ pub mod rules;
 #[cfg(feature = "fetch")]
 pub mod fetch;
 
-pub(crate) mod converter;
-pub(crate) mod options;
+pub mod converter;
+pub mod options;
 
 mod context;
 mod dom;

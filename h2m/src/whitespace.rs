@@ -14,10 +14,14 @@ pub fn collapse_whitespace(text: &str) -> Cow<'_, str> {
                 let double = prev_space;
                 prev_space = true;
                 double
-            } else if b.is_ascii_whitespace() || !b.is_ascii() && char::from(b).is_whitespace() {
-                // Non-space whitespace (tab, newline, etc.) always needs collapsing.
-                // Note: multi-byte whitespace is rare in practice; the byte check
-                // handles the common ASCII cases efficiently.
+            } else if b.is_ascii_whitespace() {
+                // Non-space ASCII whitespace (tab, newline, etc.) always needs
+                // collapsing.
+                true
+            } else if !b.is_ascii() {
+                // Non-ASCII byte: may be part of a multi-byte whitespace char
+                // (e.g. NBSP U+00A0). Conservatively trigger the slow path which
+                // iterates by `char` and checks `is_whitespace()` correctly.
                 true
             } else {
                 prev_space = false;

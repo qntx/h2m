@@ -195,28 +195,98 @@ pub enum LinkReferenceStyle {
 #[non_exhaustive]
 pub struct Options {
     /// Heading rendering style.
-    pub heading_style: HeadingStyle,
+    heading_style: HeadingStyle,
     /// Bullet character for unordered lists.
-    pub bullet_marker: BulletMarker,
+    bullet_marker: BulletMarker,
     /// Code block rendering style.
-    pub code_block_style: CodeBlockStyle,
+    code_block_style: CodeBlockStyle,
     /// Fence character for fenced code blocks.
-    pub fence: Fence,
+    fence: Fence,
     /// Delimiter for emphasis (italic).
-    pub em_delimiter: EmDelimiter,
+    em_delimiter: EmDelimiter,
     /// Delimiter for strong emphasis (bold).
-    pub strong_delimiter: StrongDelimiter,
+    strong_delimiter: StrongDelimiter,
     /// Horizontal rule string.
-    pub horizontal_rule: HorizontalRule,
+    horizontal_rule: HorizontalRule,
     /// Escape mode for markdown special characters.
-    pub escape_mode: EscapeMode,
+    escape_mode: EscapeMode,
     /// Link rendering style.
-    pub link_style: LinkStyle,
+    link_style: LinkStyle,
     /// Reference-style link identifier format.
-    pub link_reference_style: LinkReferenceStyle,
+    link_reference_style: LinkReferenceStyle,
 }
 
 impl Options {
+    /// Returns the heading rendering style.
+    #[inline]
+    #[must_use]
+    pub const fn get_heading_style(self) -> HeadingStyle {
+        self.heading_style
+    }
+
+    /// Returns the bullet character for unordered lists.
+    #[inline]
+    #[must_use]
+    pub const fn get_bullet_marker(self) -> BulletMarker {
+        self.bullet_marker
+    }
+
+    /// Returns the code block rendering style.
+    #[inline]
+    #[must_use]
+    pub const fn get_code_block_style(self) -> CodeBlockStyle {
+        self.code_block_style
+    }
+
+    /// Returns the fence character for fenced code blocks.
+    #[inline]
+    #[must_use]
+    pub const fn get_fence(self) -> Fence {
+        self.fence
+    }
+
+    /// Returns the delimiter for emphasis (italic) text.
+    #[inline]
+    #[must_use]
+    pub const fn get_em_delimiter(self) -> EmDelimiter {
+        self.em_delimiter
+    }
+
+    /// Returns the delimiter for strong emphasis (bold) text.
+    #[inline]
+    #[must_use]
+    pub const fn get_strong_delimiter(self) -> StrongDelimiter {
+        self.strong_delimiter
+    }
+
+    /// Returns the horizontal rule style.
+    #[inline]
+    #[must_use]
+    pub const fn get_horizontal_rule(self) -> HorizontalRule {
+        self.horizontal_rule
+    }
+
+    /// Returns the escape mode for markdown special characters.
+    #[inline]
+    #[must_use]
+    pub const fn get_escape_mode(self) -> EscapeMode {
+        self.escape_mode
+    }
+
+    /// Returns the link rendering style.
+    #[inline]
+    #[must_use]
+    pub const fn get_link_style(self) -> LinkStyle {
+        self.link_style
+    }
+
+    /// Returns the reference-style link identifier format.
+    #[inline]
+    #[must_use]
+    pub const fn get_link_reference_style(self) -> LinkReferenceStyle {
+        self.link_reference_style
+    }
+
     /// Sets the heading rendering style.
     #[must_use]
     pub const fn heading_style(mut self, style: HeadingStyle) -> Self {

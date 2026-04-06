@@ -22,7 +22,7 @@ impl Rule for HorizontalRule {
             return Action::Replace(String::new());
         }
 
-        let rule = ctx.options().horizontal_rule.as_str();
+        let rule = ctx.options().get_horizontal_rule().as_str();
         Action::Replace(format!("\n\n{rule}\n\n"))
     }
 }

@@ -48,8 +48,7 @@ fn list_deeply_nested_three_levels() {
 
 #[test]
 fn list_bullet_plus_option() {
-    let mut opts = Options::default();
-    opts.bullet_marker = h2m::BulletMarker::Plus;
+    let opts = Options::default().bullet_marker(h2m::BulletMarker::Plus);
     assert_eq!(
         with_options(opts).convert("<ul><li>a</li><li>b</li></ul>"),
         "+ a\n+ b"
@@ -58,8 +57,7 @@ fn list_bullet_plus_option() {
 
 #[test]
 fn list_bullet_asterisk_option() {
-    let mut opts = Options::default();
-    opts.bullet_marker = h2m::BulletMarker::Asterisk;
+    let opts = Options::default().bullet_marker(h2m::BulletMarker::Asterisk);
     assert_eq!(
         with_options(opts).convert("<ul><li>a</li><li>b</li></ul>"),
         "* a\n* b"
@@ -122,8 +120,7 @@ fn code_block_fence_escalation() {
 
 #[test]
 fn code_block_tilde_fence() {
-    let mut opts = Options::default();
-    opts.fence = h2m::Fence::Tilde;
+    let opts = Options::default().fence(h2m::Fence::Tilde);
     assert_eq!(
         with_options(opts).convert(r#"<pre><code class="language-py">pass</code></pre>"#),
         "~~~py\npass\n~~~"
@@ -132,8 +129,7 @@ fn code_block_tilde_fence() {
 
 #[test]
 fn code_block_indented_style() {
-    let mut opts = Options::default();
-    opts.code_block_style = h2m::CodeBlockStyle::Indented;
+    let opts = Options::default().code_block_style(h2m::CodeBlockStyle::Indented);
     assert_eq!(
         with_options(opts).convert("<pre><code>line1\nline2</code></pre>"),
         "    line1\n    line2"
