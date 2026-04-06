@@ -52,37 +52,36 @@ cargo install h2m-cli
 ### CLI Usage
 
 ```bash
-# Convert a URL directly
 h2m https://example.com
+h2m page.html
+curl -s https://example.com | h2m
+```
 
-# Extract only the article content
-h2m --selector article https://blog.example.com/post
+Content extraction:
 
-# Smart readable extraction (strips nav, footer, aside, etc.)
-h2m --readable https://blog.example.com/post
-# Short form
-h2m -r https://blog.example.com/post
+```bash
+h2m -r https://blog.example.com/post             # smart readable
+h2m -s article https://blog.example.com/post     # CSS selector
+h2m -s '#content' https://example.com            # by ID
+```
 
-# Local file with GFM + referenced links, save to file
-h2m --gfm --link-style referenced page.html -o output.md
+JSON output (for agents / programmatic use):
 
-# Pipe from stdin
-curl -s https://example.com | h2m --selector main
+```bash
+h2m --json https://example.com                   # pretty JSON
+h2m --json --extract-links https://example.com   # with links
+h2m --json url1 url2 url3                        # NDJSON streaming
+h2m --json --urls urls.txt -j 8 --delay 100      # batch + concurrency
+```
 
-# JSON output for programmatic / agent consumption
-h2m --json https://example.com
+Formatting:
 
-# Batch convert multiple URLs (NDJSON streaming output)
-h2m --json url1 url2 url3
-
-# Batch from file with concurrency control
-h2m --json --urls urls.txt -j 8 --delay 100
-
-# Custom User-Agent
+```bash
+h2m --gfm https://example.com                    # tables, strikethrough, task lists
+h2m --link-style referenced page.html            # reference-style links
+h2m --heading-style setext page.html             # === / --- underlines
 h2m --user-agent "MyBot/1.0" https://example.com
-
-# All formatting options
-h2m --gfm --heading-style setext --strong underscores --fence tilde page.html
+h2m -o output.md https://example.com
 ```
 
 ### JSON Output

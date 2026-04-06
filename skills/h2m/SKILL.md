@@ -79,39 +79,42 @@ h2m [OPTIONS] [INPUT]...
 
 ## Usage Examples
 
-### Basic Conversion
+### Basic
 
 ```bash
-# Convert a URL directly (domain auto-detected)
 h2m https://example.com
-
-# Convert a local HTML file
 h2m page.html
-
-# Pipe from stdin
-echo '<h1>Hello</h1><p>World</p>' | h2m
-
-# Pipe from curl
 curl -s https://example.com | h2m
+echo '<h1>Hello</h1>' | h2m
 ```
 
-### JSON Output (for agents / programmatic use)
+### Content Extraction
 
 ```bash
-# Single URL → pretty-printed JSON object
-h2m --json https://example.com
-
-# Single URL with link extraction
-h2m --json --extract-links https://example.com
-
-# Multiple URLs → NDJSON (one JSON object per line, streaming)
-h2m --json https://a.com https://b.com https://c.com
-
-# Batch from file → NDJSON
-h2m --json --urls urls.txt
+h2m -r https://blog.example.com/post             # smart readable
+h2m -s article https://blog.example.com/post     # CSS selector
+h2m -s '#content' https://example.com            # by ID
+curl -s https://example.com | h2m -r             # stdin + readable
 ```
 
-JSON output schema (single URL):
+`-r` (`--readable`) uses a two-phase approach:
+
+1. **Phase 1**: Tries semantic selectors (`article`, `main`, `[role="main"]`, …)
+2. **Phase 2**: If none found, strips noise (`nav`, `footer`, `aside`, `header`, ARIA roles)
+
+`-s` (`--selector`) and `-r` are mutually exclusive.
+
+### JSON Output
+
+```bash
+h2m --json https://example.com                   # pretty JSON
+h2m --json --extract-links https://example.com   # with links
+h2m --json url1 url2 url3                        # NDJSON streaming
+h2m --json --urls urls.txt -j 8 --delay 100      # batch + concurrency
+h2m --json --timeout 60 https://slow-site.com    # custom timeout
+```
+
+JSON output schema:
 
 ```json
 {
@@ -131,122 +134,34 @@ JSON output schema (single URL):
 }
 ```
 
-Key fields:
-
 - **`sourceUrl`** — the original requested URL
 - **`url`** — the final URL after HTTP 3xx and meta-refresh redirects
 - **`links`** — only present when `--extract-links` is set
 - **`description`**, **`ogImage`** — omitted when not present in the page
 
-### Batch Mode & Concurrency
+Multiple URLs produce NDJSON (one JSON object per line). `--urls` reads from a file (lines starting with `#` are ignored).
+
+### Formatting
 
 ```bash
-# Batch convert 3 URLs with default concurrency (4)
-h2m --json url1 url2 url3
-
-# High concurrency with rate limiting
-h2m --json --urls urls.txt -j 16 --delay 200
-
-# Set timeout for slow pages
-h2m --json --timeout 60 https://slow-site.com
-
-# Batch from file (lines starting with # are ignored)
-h2m --json --urls urls.txt
-```
-
-### Smart Readable Extraction
-
-```bash
-# Smart extraction: strips nav, footer, aside, header, etc.
-h2m --readable https://blog.example.com/post
-h2m -r https://blog.example.com/post
-
-# Works with JSON output
-h2m --readable --json https://docs.rs/scraper
-
-# Works with stdin
-curl -s https://example.com | h2m --readable
-```
-
-`--readable` uses a two-phase approach:
-
-1. **Phase 1**: Tries semantic selectors (`article`, `main`, `[role="main"]`, …)
-2. **Phase 2**: If no semantic wrapper found, strips noise elements (`nav`, `footer`, `aside`, `header`, `[role="navigation"]`, `[role="banner"]`, `[role="contentinfo"]`, `[role="complementary"]`, `[role="search"]`, `[aria-hidden="true"]`)
-
-### CSS Selector Extraction
-
-```bash
-# Extract only the article content
-h2m --selector article https://blog.example.com/post
-
-# Extract by ID
-h2m --selector '#content' https://example.com
-
-# Extract main element
-curl -s https://example.com | h2m --selector main
-```
-
-`--selector` and `--readable` are mutually exclusive.
-
-### GFM Extensions
-
-```bash
-# Enable tables, strikethrough, task lists
-h2m --gfm https://github.com/user/repo
-
-# GFM with referenced links
-h2m --gfm --link-style referenced https://example.com
-```
-
-### Formatting Options
-
-```bash
-# Setext headings (=== and --- underlines for h1/h2)
-h2m --heading-style setext page.html
-
-# Tilde code fences instead of backticks
-h2m --fence tilde page.html
-
-# Underscore emphasis and strong
+h2m --gfm https://example.com                    # tables, strikethrough, task lists
+h2m --link-style referenced page.html            # reference-style links
+h2m --link-style referenced --link-ref collapsed # [text][] style
+h2m --heading-style setext page.html             # === / --- underlines
+h2m --fence tilde page.html                      # ~~~ code fences
+h2m --bullet star page.html                      # * instead of -
+h2m --hr underscores page.html                   # ___ instead of ---
 h2m --em underscore --strong underscores page.html
-
-# All options combined
-h2m --gfm --heading-style setext --strong underscores --fence tilde page.html
+h2m --no-escape page.html                        # disable markdown escaping
 ```
 
-### Reference-Style Links
+### Other Options
 
 ```bash
-# Full reference: [text][1] with [1]: url footer
-h2m --link-style referenced --link-ref full page.html
-
-# Collapsed: [text][] with [text]: url footer
-h2m --link-style referenced --link-ref collapsed page.html
-
-# Shortcut: [text] with [text]: url footer
-h2m --link-style referenced --link-ref shortcut page.html
-```
-
-### Domain Resolution
-
-```bash
-# Auto-detected when input is a URL
-h2m https://example.com
-# relative "/about" becomes "https://example.com/about"
-
-# Manually set for local files or stdin
-h2m --domain example.com page.html
-curl -s https://example.com | h2m --domain example.com
-```
-
-### Output to File
-
-```bash
-# Save to file
-h2m https://example.com -o output.md
-
-# Combine with selector
-h2m --selector article --gfm https://blog.example.com/post -o article.md
+h2m --domain example.com page.html               # resolve relative URLs
+h2m --user-agent "MyBot/1.0" https://example.com
+h2m -o output.md https://example.com             # save to file
+h2m -r --gfm -o article.md https://blog.example.com/post
 ```
 
 ## Supported HTML Elements
