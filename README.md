@@ -12,8 +12,8 @@
 [crates-url]: https://crates.io/crates/h2m
 [docs-badge]: https://img.shields.io/docsrs/h2m.svg
 [docs-url]: https://docs.rs/h2m
-[ci-badge]: https://github.com/qntx/h2m/actions/workflows/rust.yml/badge.svg
-[ci-url]: https://github.com/qntx/h2m/actions/workflows/rust.yml
+[ci-badge]: https://github.com/qntx-labs/h2m/actions/workflows/rust.yml/badge.svg
+[ci-url]: https://github.com/qntx-labs/h2m/actions/workflows/rust.yml
 [license-badge]: https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg
 [license-url]: LICENSE-MIT
 [rust-badge]: https://img.shields.io/badge/rust-edition%202024-orange.svg
