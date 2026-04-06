@@ -1,4 +1,9 @@
 //! GFM table (`<table>`) conversion rules.
+//!
+//! **Known limitation:** column width is calculated using byte length, not
+//! Unicode display width. Tables containing wide characters (CJK, emoji) may
+//! have misaligned columns in the rendered Markdown source. Most Markdown
+//! renderers still display these tables correctly.
 
 use scraper::ElementRef;
 
