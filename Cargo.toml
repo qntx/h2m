@@ -18,7 +18,8 @@ scraper = "0.26"
 ego-tree = "0.11"
 thiserror = "2"
 clap = { version = "4", features = ["derive"] }
-ureq = "3"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls-native-roots"] }
+url = "2"
 pretty_assertions = "1"
 
 

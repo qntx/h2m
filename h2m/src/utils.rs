@@ -75,10 +75,10 @@ fn collect_text_inner(node: &NodeRef<'_, Node>, buf: &mut String) {
     }
 }
 
-/// Resolves a potentially relative URL against a base domain.
+/// Resolves a potentially relative URL against a base domain using the `url`
+/// crate's WHATWG-compliant URL parser.
 ///
-/// If `domain` is `None` or the URL is already absolute, returns the URL
-/// unchanged.
+/// If `domain` is `None` or parsing fails, returns the URL unchanged.
 #[must_use]
 pub fn resolve_url(base_domain: Option<&str>, raw_url: &str) -> String {
     let Some(domain) = base_domain else {
@@ -89,23 +89,24 @@ pub fn resolve_url(base_domain: Option<&str>, raw_url: &str) -> String {
         return raw_url.to_owned();
     }
 
-    // Already absolute or data URI.
-    if raw_url.contains("://") || raw_url.starts_with("data:") || raw_url.starts_with("mailto:") {
+    // Already a valid absolute URL — return as-is.
+    if url::Url::parse(raw_url).is_ok() {
         return raw_url.to_owned();
     }
 
-    // Protocol-relative URL.
-    if raw_url.starts_with("//") {
-        return format!("http:{raw_url}");
-    }
+    // Construct a base URL from the domain and resolve against it.
+    let base_str = if domain.contains("://") {
+        domain.to_owned()
+    } else {
+        format!("http://{domain}")
+    };
 
-    // Absolute path.
-    if raw_url.starts_with('/') {
-        return format!("http://{domain}{raw_url}");
-    }
+    let Ok(base) = url::Url::parse(&base_str) else {
+        return raw_url.to_owned();
+    };
 
-    // Relative path.
-    format!("http://{domain}/{raw_url}")
+    base.join(raw_url)
+        .map_or_else(|_| raw_url.to_owned(), |u| u.to_string())
 }
 
 /// Adds a leading/trailing space around `markdown` if the neighbouring DOM

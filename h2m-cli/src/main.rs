@@ -185,44 +185,31 @@ fn main() {
     write_output(&cli, &md);
 }
 
-/// Determines whether the input looks like a URL.
-fn is_url(input: &str) -> bool {
-    input.starts_with("http://") || input.starts_with("https://")
-}
-
-/// Extracts the domain (host) from a URL string.
-fn extract_domain(url: &str) -> Option<String> {
-    let without_scheme = url
-        .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))?;
-    let host = without_scheme
-        .split('/')
-        .next()?
-        .split('?')
-        .next()?
-        .split('#')
-        .next()?;
-    if host.is_empty() {
-        None
+/// Parses the input as a URL if it has an http/https scheme.
+fn parse_as_url(input: &str) -> Option<url::Url> {
+    let parsed = url::Url::parse(input).ok()?;
+    if matches!(parsed.scheme(), "http" | "https") {
+        Some(parsed)
     } else {
-        Some(host.to_owned())
+        None
     }
 }
 
 /// Reads HTML from URL, file, or stdin. Returns `(html, auto_domain)`.
 fn read_input(cli: &Cli) -> (String, Option<String>) {
     match &cli.input {
-        Some(input) if is_url(input) => {
-            let auto_domain = extract_domain(input);
+        Some(input) if parse_as_url(input).is_some() => {
+            let Some(parsed) = parse_as_url(input) else {
+                unreachable!("guard already checked");
+            };
+            let auto_domain = parsed.host_str().map(str::to_owned);
             eprintln!("Fetching {input}...");
-            let body = ureq::get(input)
-                .call()
+            let body = reqwest::blocking::get(input)
                 .unwrap_or_else(|e| {
                     eprintln!("error: failed to fetch {input}: {e}");
                     process::exit(1);
                 })
-                .into_body()
-                .read_to_string()
+                .text()
                 .unwrap_or_else(|e| {
                     eprintln!("error: failed to read response body: {e}");
                     process::exit(1);

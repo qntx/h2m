@@ -16,7 +16,8 @@ path = "src/main.rs"
 [dependencies]
 h2m = { path = "../h2m" }
 clap.workspace = true
-ureq.workspace = true
+reqwest.workspace = true
+url.workspace = true
 scraper.workspace = true
 
 [lints]
