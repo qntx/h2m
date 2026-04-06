@@ -3,41 +3,40 @@
 use scraper::ElementRef;
 
 use crate::context::Context;
+use crate::converter::{Action, Rule};
+use crate::dom;
 use crate::options::{LinkReferenceStyle, LinkStyle};
-use crate::rule::{Action, Rule};
-use crate::utils;
 
 /// Handles `<a>` elements with support for inline and reference-style links.
 #[derive(Debug, Clone, Copy)]
-pub struct LinkRule;
+pub struct Link;
 
-impl Rule for LinkRule {
+impl Rule for Link {
     fn tags(&self) -> &'static [&'static str] {
         &["a"]
     }
 
     fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
-        let href = utils::attr(element, "href").unwrap_or("");
+        let href = dom::attr(element, "href").unwrap_or("");
 
         // Skip non-link anchors.
         if href.is_empty() || href.trim() == "#" {
             return Action::Replace(content.to_owned());
         }
 
-        let absolute_href = utils::resolve_url(ctx.domain(), href);
+        let absolute_href = dom::resolve_url(ctx.domain(), href);
 
         // Multiline content: escape newlines so the link text stays on one
         // logical line.
         let escaped_content = escape_multiline(content);
 
         // Title attribute (escape internal quotes).
-        let title =
-            utils::attr(element, "title").map(|t| t.replace('\n', " ").replace('"', "\\\""));
+        let title = dom::attr(element, "title").map(|t| t.replace('\n', " ").replace('"', "\\\""));
 
         // If content is empty, fall back to title or aria-label attribute.
         let display = if escaped_content.trim().is_empty() {
-            let fallback = utils::attr(element, "title")
-                .or_else(|| utils::attr(element, "aria-label"))
+            let fallback = dom::attr(element, "title")
+                .or_else(|| dom::attr(element, "aria-label"))
                 .unwrap_or("")
                 .to_owned();
             if fallback.is_empty() {
@@ -56,7 +55,7 @@ impl Rule for LinkRule {
             && let Some(img_url) = extract_markdown_image_url(trimmed_display)
             && img_url == absolute_href
         {
-            return Action::Replace(utils::add_space_if_necessary(
+            return Action::Replace(dom::add_space_if_necessary(
                 element,
                 trimmed_display.to_owned(),
             ));
@@ -73,7 +72,7 @@ impl Rule for LinkRule {
             }
         };
 
-        Action::Replace(utils::add_space_if_necessary(element, md))
+        Action::Replace(dom::add_space_if_necessary(element, md))
     }
 }
 
@@ -104,7 +103,6 @@ fn escape_multiline(content: &str) -> String {
     if !trimmed.contains('\n') {
         return trimmed.to_owned();
     }
-    // Replace newlines with escaped newline continuation.
     trimmed.replace('\n', "\\\n")
 }
 
@@ -114,7 +112,6 @@ fn extract_markdown_image_url(md: &str) -> Option<&str> {
     let after_alt = rest.find("](")?;
     let url_start = after_alt + 2;
     let url_part = &rest[url_start..];
-    // Find closing `)` — skip optional title.
     let end = url_part.find(')')?;
     let url = url_part[..end].trim();
     // Strip optional title in quotes.

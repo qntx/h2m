@@ -3,14 +3,14 @@
 use scraper::ElementRef;
 
 use crate::context::Context;
-use crate::rule::{Action, Rule};
-use crate::utils;
+use crate::converter::{Action, Rule};
+use crate::dom;
 
 /// Handles strikethrough elements.
 #[derive(Debug, Clone, Copy)]
-pub struct StrikethroughRule;
+pub struct Strikethrough;
 
-impl Rule for StrikethroughRule {
+impl Rule for Strikethrough {
     fn tags(&self) -> &'static [&'static str] {
         &["del", "s", "strike"]
     }
@@ -22,6 +22,6 @@ impl Rule for StrikethroughRule {
         }
 
         let text = format!("~~{trimmed}~~");
-        Action::Replace(utils::add_space_if_necessary(element, text))
+        Action::Replace(dom::add_space_if_necessary(element, text))
     }
 }

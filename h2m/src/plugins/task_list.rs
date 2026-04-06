@@ -3,28 +3,28 @@
 use scraper::ElementRef;
 
 use crate::context::Context;
-use crate::rule::{Action, Rule};
-use crate::utils;
+use crate::converter::{Action, Rule};
+use crate::dom;
 
 /// Handles `<input type="checkbox">` elements inside list items.
 #[derive(Debug, Clone, Copy)]
-pub struct TaskListRule;
+pub struct TaskList;
 
-impl Rule for TaskListRule {
+impl Rule for TaskList {
     fn tags(&self) -> &'static [&'static str] {
         &["input"]
     }
 
     fn apply(&self, _content: &str, element: &ElementRef<'_>, _ctx: &mut Context) -> Action {
         let is_checkbox =
-            utils::attr(element, "type").is_some_and(|t| t.eq_ignore_ascii_case("checkbox"));
+            dom::attr(element, "type").is_some_and(|t| t.eq_ignore_ascii_case("checkbox"));
 
         if !is_checkbox {
             return Action::Skip;
         }
 
         // Only convert checkboxes that are direct children of a <li>.
-        if !utils::parent_tag_is(element, "li") {
+        if !dom::parent_tag_is(element, "li") {
             return Action::Skip;
         }
 

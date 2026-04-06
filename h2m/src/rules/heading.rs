@@ -3,18 +3,18 @@
 use scraper::ElementRef;
 
 use crate::context::Context;
+use crate::converter::{Action, Rule};
+use crate::dom;
 use crate::options::HeadingStyle;
-use crate::rule::{Action, Rule};
-use crate::utils;
 
-/// ATX heading prefixes indexed by level (0-indexed, level 1 → index 0).
+/// ATX heading prefixes indexed by level (0-indexed, level 1 = index 0).
 const ATX_PREFIXES: [&str; 6] = ["#", "##", "###", "####", "#####", "######"];
 
 /// Handles `<h1>` through `<h6>` elements.
 #[derive(Debug, Clone, Copy)]
-pub struct HeadingRule;
+pub struct Heading;
 
-impl Rule for HeadingRule {
+impl Rule for Heading {
     fn tags(&self) -> &'static [&'static str] {
         &["h1", "h2", "h3", "h4", "h5", "h6"]
     }
@@ -34,10 +34,10 @@ impl Rule for HeadingRule {
         }
 
         // If the heading is inside an <a> link, render as bold instead.
-        if utils::has_ancestor(element, "a") {
+        if dom::has_ancestor(element, "a") {
             let delim = ctx.options().strong_delimiter;
             let text = format!("{delim}{trimmed}{delim}");
-            return Action::Replace(utils::add_space_if_necessary(element, text));
+            return Action::Replace(dom::add_space_if_necessary(element, text));
         }
 
         let md = match ctx.options().heading_style {
@@ -57,7 +57,7 @@ impl Rule for HeadingRule {
     }
 }
 
-/// Extracts the heading level (1–6) from a tag name like `"h2"`.
+/// Extracts the heading level (1-6) from a tag name like `"h2"`.
 #[inline]
 fn heading_level(tag: &str) -> usize {
     tag.as_bytes()

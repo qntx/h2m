@@ -3,14 +3,14 @@
 use scraper::ElementRef;
 
 use crate::context::Context;
-use crate::rule::{Action, Rule};
-use crate::utils;
+use crate::converter::{Action, Rule};
+use crate::dom;
 
 /// Handles `<ul>` and `<ol>` list wrapper elements.
 #[derive(Debug, Clone, Copy)]
-pub struct ListRule;
+pub struct List;
 
-impl Rule for ListRule {
+impl Rule for List {
     fn tags(&self) -> &'static [&'static str] {
         &["ul", "ol"]
     }
@@ -21,7 +21,7 @@ impl Rule for ListRule {
             return Action::Skip;
         }
 
-        if utils::has_ancestor(element, "li") {
+        if dom::has_ancestor(element, "li") {
             Action::Replace(format!("\n{trimmed}"))
         } else {
             Action::Replace(format!("\n\n{trimmed}\n\n"))
@@ -29,11 +29,11 @@ impl Rule for ListRule {
     }
 }
 
-/// Handles `<li>` elements using pre-computed [`ListMetadata`].
+/// Handles `<li>` elements using pre-computed list metadata.
 #[derive(Debug, Clone, Copy)]
-pub struct ListItemRule;
+pub struct ListItem;
 
-impl Rule for ListItemRule {
+impl Rule for ListItem {
     fn tags(&self) -> &'static [&'static str] {
         &["li"]
     }
@@ -45,10 +45,10 @@ impl Rule for ListItemRule {
             return Action::Replace(format!("- {trimmed}\n"));
         };
 
-        // Continuation lines (including nested list output) are indented
-        // by the prefix width so they align with the first line's content.
-        // We do NOT add parent_indent here — the parent `<li>` already
-        // indents this item's output as part of its own continuation lines.
+        // Continuation lines are indented by the prefix width so they align
+        // with the first line's content. We do NOT add parent_indent here
+        // because the parent `<li>` already indents this item's output as
+        // part of its own continuation lines.
         let continuation_indent = " ".repeat(meta.prefix_width);
         let trimmed = content.trim();
 
@@ -60,7 +60,6 @@ impl Rule for ListItemRule {
             } else {
                 result.push('\n');
                 result.push_str(&continuation_indent);
-                // Preserve existing indentation from nested lists.
                 if !line.trim().is_empty() {
                     result.push_str(line);
                 }

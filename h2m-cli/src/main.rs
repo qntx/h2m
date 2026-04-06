@@ -57,9 +57,9 @@ struct Cli {
     #[arg(long, default_value = "*")]
     em: char,
 
-    /// Strong delimiter ("**" or "__").
-    #[arg(long, default_value = "**")]
-    strong: Strong,
+    /// Strong delimiter.
+    #[arg(long, value_enum, default_value_t = StrongStyle::Stars)]
+    strong: StrongStyle,
 
     /// Horizontal rule string.
     #[arg(long, default_value = "---")]
@@ -130,26 +130,13 @@ enum LinkRefArg {
     Shortcut,
 }
 
-/// Strong delimiter parsed from CLI.
-#[derive(Debug, Clone)]
-struct Strong(String);
-
-impl Default for Strong {
-    fn default() -> Self {
-        Self("**".to_owned())
-    }
-}
-
-impl std::str::FromStr for Strong {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "**" | "__" => Ok(Self(s.to_owned())),
-            _ => Err(format!(
-                "invalid strong delimiter: {s:?} (expected \"**\" or \"__\")"
-            )),
-        }
-    }
+/// Strong emphasis delimiter style.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum StrongStyle {
+    /// Double asterisks: `**bold**`.
+    Stars,
+    /// Double underscores: `__bold__`.
+    Underscores,
 }
 
 fn main() {
@@ -276,10 +263,10 @@ fn build_options(cli: &Cli) -> h2m::Options {
 
     options.em_delimiter = cli.em;
 
-    match cli.strong.0.as_str() {
-        "__" => options.strong_delimiter = "__",
-        _ => options.strong_delimiter = "**",
-    }
+    options.strong_delimiter = match cli.strong {
+        StrongStyle::Stars => "**",
+        StrongStyle::Underscores => "__",
+    };
 
     if cli.no_escape {
         options.escape_mode = h2m::EscapeMode::Disabled;

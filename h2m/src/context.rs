@@ -59,6 +59,19 @@ impl Context {
         &self.options
     }
 
+    /// Returns `true` if currently inside a preformatted element.
+    #[inline]
+    #[must_use]
+    pub const fn in_pre(&self) -> bool {
+        self.in_pre
+    }
+
+    /// Sets the preformatted context flag.
+    #[inline]
+    pub(crate) const fn set_in_pre(&mut self, value: bool) {
+        self.in_pre = value;
+    }
+
     /// Returns the list metadata for the given node ID, if any.
     #[inline]
     #[must_use]
@@ -79,5 +92,103 @@ impl Context {
         self.link_index += 1;
         self.references.push(reference);
         self.link_index
+    }
+
+    /// Returns `true` if any reference-style link definitions were accumulated.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn has_references(&self) -> bool {
+        !self.references.is_empty()
+    }
+
+    /// Joins all accumulated reference definitions into a single string.
+    #[must_use]
+    pub(crate) fn drain_references(&self) -> String {
+        self.references.join("\n")
+    }
+
+    /// Pre-computes [`ListMetadata`] for every `<li>` element in the document.
+    pub(crate) fn annotate_lists(
+        &mut self,
+        root_id: NodeId,
+        document: &scraper::Html,
+        options: &Options,
+    ) {
+        Self::annotate_list_node(options, root_id, document, self, 0);
+    }
+
+    /// Recursively annotates list items with their prefix and indentation.
+    fn annotate_list_node(
+        options: &Options,
+        node_id: NodeId,
+        document: &scraper::Html,
+        ctx: &mut Self,
+        parent_indent: usize,
+    ) {
+        let Some(node_ref) = document.tree.get(node_id) else {
+            return;
+        };
+
+        let is_list = node_ref.value().as_element().is_some_and(|el| {
+            let name = el.name();
+            name == "ul" || name == "ol"
+        });
+
+        if is_list {
+            let el = node_ref.value().as_element();
+            let is_ordered = el.is_some_and(|e| e.name() == "ol");
+            let start: usize = el
+                .and_then(|e| e.attr("start"))
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1);
+
+            let li_count = node_ref
+                .children()
+                .filter(|c| c.value().as_element().is_some_and(|e| e.name() == "li"))
+                .count();
+
+            let max_number = start + li_count.saturating_sub(1);
+            let number_width = if is_ordered {
+                max_number.to_string().len()
+            } else {
+                0
+            };
+
+            let mut item_index = 0usize;
+            for child in node_ref.children() {
+                if child.value().as_element().is_some_and(|e| e.name() == "li") {
+                    let prefix = if is_ordered {
+                        let num = start + item_index;
+                        format!("{num:>number_width$}. ")
+                    } else {
+                        format!("{} ", options.bullet_marker)
+                    };
+                    let prefix_width = prefix.len();
+
+                    ctx.list_metadata.insert(
+                        child.id(),
+                        ListMetadata {
+                            prefix,
+                            prefix_width,
+                            parent_indent,
+                        },
+                    );
+
+                    Self::annotate_list_node(
+                        options,
+                        child.id(),
+                        document,
+                        ctx,
+                        parent_indent + prefix_width,
+                    );
+
+                    item_index += 1;
+                }
+            }
+        } else {
+            for child in node_ref.children() {
+                Self::annotate_list_node(options, child.id(), document, ctx, parent_indent);
+            }
+        }
     }
 }

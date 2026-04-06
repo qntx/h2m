@@ -5,7 +5,7 @@ use scraper::ElementRef;
 use scraper::node::Node;
 
 use crate::context::Context;
-use crate::rule::{Action, Rule};
+use crate::converter::{Action, Rule};
 
 /// Handles `<table>` elements, rendering them as GFM pipe tables.
 #[derive(Debug, Clone, Copy)]

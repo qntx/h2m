@@ -2,11 +2,10 @@
 //!
 //! Bundles table, strikethrough, and task list support.
 
-use super::strikethrough::StrikethroughRule;
+use super::strikethrough::Strikethrough;
 use super::table::{TableCellRule, TableRowRule, TableRule, TableSectionRule};
-use super::task_list::TaskListRule;
-use crate::converter::ConverterBuilder;
-use crate::plugin::Plugin;
+use super::task_list::TaskList;
+use crate::converter::{ConverterBuilder, Plugin};
 
 /// GFM plugin — adds table, strikethrough, and task list rules.
 ///
@@ -35,7 +34,7 @@ impl Plugin for Gfm {
         builder.add_rule(TableSectionRule);
         builder.add_rule(TableRowRule);
         builder.add_rule(TableCellRule);
-        builder.add_rule(StrikethroughRule);
-        builder.add_rule(TaskListRule);
+        builder.add_rule(Strikethrough);
+        builder.add_rule(TaskList);
     }
 }

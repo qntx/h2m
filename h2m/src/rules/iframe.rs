@@ -3,8 +3,8 @@
 use scraper::ElementRef;
 
 use crate::context::Context;
-use crate::rule::{Action, Rule};
-use crate::utils;
+use crate::converter::{Action, Rule};
+use crate::dom;
 
 /// Handles `<iframe>` elements by converting them to markdown links.
 ///
@@ -12,15 +12,15 @@ use crate::utils;
 /// require a nested converter). For regular iframes, the `src` is rendered
 /// as a link.
 #[derive(Debug, Clone, Copy)]
-pub struct IframeRule;
+pub struct Iframe;
 
-impl Rule for IframeRule {
+impl Rule for Iframe {
     fn tags(&self) -> &'static [&'static str] {
         &["iframe"]
     }
 
     fn apply(&self, _content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
-        let Some(src) = utils::attr(element, "src") else {
+        let Some(src) = dom::attr(element, "src") else {
             return Action::Replace(String::new());
         };
 
@@ -33,7 +33,7 @@ impl Rule for IframeRule {
             return Action::Replace(String::new());
         }
 
-        let absolute_url = utils::resolve_url(ctx.domain(), src);
+        let absolute_url = dom::resolve_url(ctx.domain(), src);
         Action::Replace(format!("[iframe]({absolute_url})"))
     }
 }

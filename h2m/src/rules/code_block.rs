@@ -5,15 +5,15 @@ use std::fmt::Write;
 use scraper::ElementRef;
 
 use crate::context::Context;
+use crate::converter::{Action, Rule};
+use crate::dom;
 use crate::options::CodeBlockStyle;
-use crate::rule::{Action, Rule};
-use crate::utils;
 
 /// Handles `<pre>` elements (typically containing a `<code>` child).
 #[derive(Debug, Clone, Copy)]
-pub struct CodeBlockRule;
+pub struct CodeBlock;
 
-impl Rule for CodeBlockRule {
+impl Rule for CodeBlock {
     fn tags(&self) -> &'static [&'static str] {
         &["pre"]
     }
@@ -26,7 +26,7 @@ impl Rule for CodeBlockRule {
     }
 }
 
-impl CodeBlockRule {
+impl CodeBlock {
     /// Renders a fenced code block.
     fn fenced(content: &str, element: &ElementRef<'_>, ctx: &Context) -> Action {
         let language = detect_language(element);
@@ -34,7 +34,7 @@ impl CodeBlockRule {
 
         // Calculate fence length: must exceed longest consecutive run of the
         // fence character in the content.
-        let max_run = utils::max_consecutive_char(content, fence_char);
+        let max_run = dom::max_consecutive_char(content, fence_char);
         let fence_len = std::cmp::max(3, max_run + 1);
         let fence: String = std::iter::repeat_n(fence_char, fence_len).collect();
 

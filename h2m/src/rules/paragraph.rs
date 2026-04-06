@@ -3,14 +3,14 @@
 use scraper::ElementRef;
 
 use crate::context::Context;
-use crate::rule::{Action, Rule};
+use crate::converter::{Action, Rule};
 
 /// Handles `<p>`, `<div>`, `<section>`, `<article>`, `<main>`, `<header>`,
 /// `<footer>`, and `<nav>` elements.
 #[derive(Debug, Clone, Copy)]
-pub struct ParagraphRule;
+pub struct Paragraph;
 
-impl Rule for ParagraphRule {
+impl Rule for Paragraph {
     fn tags(&self) -> &'static [&'static str] {
         &[
             "p", "div", "section", "article", "main", "header", "footer", "nav",

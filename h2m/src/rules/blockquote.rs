@@ -3,13 +3,13 @@
 use scraper::ElementRef;
 
 use crate::context::Context;
-use crate::rule::{Action, Rule};
+use crate::converter::{Action, Rule};
 
 /// Handles `<blockquote>` elements, including nested blockquotes.
 #[derive(Debug, Clone, Copy)]
-pub struct BlockquoteRule;
+pub struct Blockquote;
 
-impl Rule for BlockquoteRule {
+impl Rule for Blockquote {
     fn tags(&self) -> &'static [&'static str] {
         &["blockquote"]
     }

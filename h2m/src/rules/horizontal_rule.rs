@@ -1,0 +1,37 @@
+//! Horizontal rule (`<hr>`) conversion rule.
+
+use scraper::ElementRef;
+
+use crate::context::Context;
+use crate::converter::{Action, Rule};
+use crate::dom;
+
+/// Handles `<hr>` elements.
+///
+/// Renders a thematic break, but suppresses it when the `<hr>` appears inside
+/// a heading (which would look weird: `## --- Heading`).
+#[derive(Debug, Clone, Copy)]
+pub struct HorizontalRule;
+
+impl Rule for HorizontalRule {
+    fn tags(&self) -> &'static [&'static str] {
+        &["hr"]
+    }
+
+    fn apply(&self, _content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
+        if is_inside_heading(element) {
+            return Action::Replace(String::new());
+        }
+
+        let rule = ctx.options().horizontal_rule;
+        Action::Replace(format!("\n\n{rule}\n\n"))
+    }
+}
+
+/// Returns `true` if the element is inside any heading tag (`h1`–`h6`).
+fn is_inside_heading(element: &ElementRef<'_>) -> bool {
+    const HEADING_TAGS: &[&str] = &["h1", "h2", "h3", "h4", "h5", "h6"];
+    HEADING_TAGS
+        .iter()
+        .any(|tag| dom::has_ancestor(element, tag))
+}

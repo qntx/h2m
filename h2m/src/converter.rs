@@ -1,4 +1,4 @@
-//! Core converter: builder, frozen converter, and traversal pipeline.
+//! Core converter: traits, builder, frozen converter, and traversal pipeline.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -7,12 +7,70 @@ use ego_tree::NodeId;
 use scraper::node::Node;
 use scraper::{ElementRef, Html};
 
-use crate::context::{Context, ListMetadata};
+use crate::context::Context;
 use crate::escape;
 use crate::options::Options;
-use crate::plugin::Plugin;
-use crate::rule::{Action, Rule};
 use crate::whitespace;
+
+/// The action a rule returns to control how an element is converted.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum Action {
+    /// Replace the element with the given markdown string.
+    Replace(String),
+    /// Skip this rule and try the next registered rule for this tag.
+    Skip,
+    /// Remove the element and all its content from the output.
+    Remove,
+}
+
+/// A conversion rule that handles one or more HTML tag types.
+///
+/// Rules are registered with the converter and dispatched by tag name.
+/// Multiple rules can be registered for the same tag; they are tried in
+/// reverse registration order (last-registered first). The first rule that
+/// returns [`Action::Replace`] wins.
+pub trait Rule: Send + Sync {
+    /// Returns the HTML tag names this rule handles.
+    fn tags(&self) -> &'static [&'static str];
+
+    /// Applies this rule to an element.
+    ///
+    /// # Arguments
+    ///
+    /// * `content` - The already-converted markdown content of the element's
+    ///   children.
+    /// * `element` - The HTML element being converted.
+    /// * `ctx` - The current conversion context with options and mutable state
+    ///   (e.g. for accumulating reference-style link definitions).
+    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action;
+}
+
+/// A plugin that registers rules and hooks with a converter.
+///
+/// Plugins provide a composable way to extend the converter with additional
+/// tag handlers. For example, the GFM plugin bundles table, strikethrough,
+/// and task list support.
+///
+/// # Examples
+///
+/// ```
+/// use h2m::Converter;
+/// use h2m::plugins::Gfm;
+/// use h2m::rules::CommonMark;
+///
+/// let converter = Converter::builder()
+///     .use_plugin(CommonMark)
+///     .use_plugin(Gfm)
+///     .build();
+///
+/// let md = converter.convert("<table><tr><th>A</th></tr></table>").unwrap();
+/// assert!(md.contains("| A"));
+/// ```
+pub trait Plugin {
+    /// Registers this plugin's rules and hooks with the given builder.
+    fn register(&self, builder: &mut ConverterBuilder);
+}
 
 /// Builder for constructing a [`Converter`] with custom rules and options.
 #[derive(Default)]
@@ -119,6 +177,24 @@ impl ConverterBuilder {
 ///
 /// Construct via [`Converter::builder()`] or the convenience
 /// [`crate::convert()`] function.
+///
+/// # Examples
+///
+/// ```
+/// use h2m::{Converter, Options};
+/// use h2m::rules::CommonMark;
+/// use h2m::plugins::Gfm;
+///
+/// let converter = Converter::builder()
+///     .options(Options::default())
+///     .use_plugin(CommonMark)
+///     .use_plugin(Gfm)
+///     .domain("example.com")
+///     .build();
+///
+/// let md = converter.convert("<p><a href=\"/about\">About</a></p>").unwrap();
+/// assert_eq!(md, "[About](http://example.com/about)");
+/// ```
 pub struct Converter {
     /// Conversion options.
     options: Options,
@@ -172,16 +248,16 @@ impl Converter {
         let mut ctx = Context::new(self.options, self.domain.clone());
 
         // Pre-pass: compute list metadata.
-        self.annotate_lists(&document, &mut ctx);
+        ctx.annotate_lists(document.root_element().id(), &document, &self.options);
 
         // Traverse from the root element (<html>).
         let root_id = document.root_element().id();
         let mut output = self.process_node(root_id, &document, &mut ctx);
 
         // Append reference-style link definitions if any.
-        if !ctx.references.is_empty() {
+        if ctx.has_references() {
             output.push_str("\n\n");
-            output.push_str(&ctx.references.join("\n"));
+            output.push_str(&ctx.drain_references());
         }
 
         Ok(whitespace::clean_output(&output))
@@ -196,92 +272,6 @@ impl Converter {
         let mut html = String::new();
         reader.read_to_string(&mut html)?;
         self.convert(&html)
-    }
-
-    /// Walks the DOM to compute [`ListMetadata`] for every `<li>` element.
-    fn annotate_lists(&self, document: &Html, ctx: &mut Context) {
-        Self::annotate_list_node(
-            &self.options,
-            document.root_element().id(),
-            document,
-            ctx,
-            0,
-        );
-    }
-
-    /// Recursively annotates list items with their prefix and indentation.
-    fn annotate_list_node(
-        options: &Options,
-        node_id: NodeId,
-        document: &Html,
-        ctx: &mut Context,
-        parent_indent: usize,
-    ) {
-        let Some(node_ref) = document.tree.get(node_id) else {
-            return;
-        };
-
-        let is_list = node_ref.value().as_element().is_some_and(|el| {
-            let name = el.name();
-            name == "ul" || name == "ol"
-        });
-
-        if is_list {
-            let el = node_ref.value().as_element();
-            let is_ordered = el.is_some_and(|e| e.name() == "ol");
-            let start: usize = el
-                .and_then(|e| e.attr("start"))
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(1);
-
-            let li_count = node_ref
-                .children()
-                .filter(|c| c.value().as_element().is_some_and(|e| e.name() == "li"))
-                .count();
-
-            let max_number = start + li_count.saturating_sub(1);
-            let number_width = if is_ordered {
-                max_number.to_string().len()
-            } else {
-                0
-            };
-
-            let mut item_index = 0usize;
-            for child in node_ref.children() {
-                if child.value().as_element().is_some_and(|e| e.name() == "li") {
-                    let prefix = if is_ordered {
-                        let num = start + item_index;
-                        format!("{num:>number_width$}. ")
-                    } else {
-                        format!("{} ", options.bullet_marker)
-                    };
-                    let prefix_width = prefix.len();
-
-                    ctx.list_metadata.insert(
-                        child.id(),
-                        ListMetadata {
-                            prefix,
-                            prefix_width,
-                            parent_indent,
-                        },
-                    );
-
-                    Self::annotate_list_node(
-                        options,
-                        child.id(),
-                        document,
-                        ctx,
-                        parent_indent + prefix_width,
-                    );
-
-                    item_index += 1;
-                }
-            }
-        } else {
-            for child in node_ref.children() {
-                Self::annotate_list_node(options, child.id(), document, ctx, parent_indent);
-            }
-        }
     }
 
     /// Processes a DOM node and returns its markdown representation.
@@ -313,12 +303,12 @@ impl Converter {
     fn process_text(text: &scraper::node::Text, ctx: &Context) -> String {
         let raw: &str = text;
 
-        if ctx.in_pre {
+        if ctx.in_pre() {
             return raw.to_owned();
         }
 
         let collapsed = whitespace::collapse_whitespace(raw);
-        let escaped = escape::escape_markdown(&collapsed, ctx.options.escape_mode);
+        let escaped = escape::escape_markdown(&collapsed, ctx.options().escape_mode);
 
         escaped.into_owned()
     }
@@ -340,9 +330,9 @@ impl Converter {
 
         // Track preformatted context — suppress whitespace collapse and
         // escaping inside `<pre>` and inline `<code>`/`<kbd>`/`<samp>`/`<tt>`.
-        let was_in_pre = ctx.in_pre;
+        let was_in_pre = ctx.in_pre();
         if matches!(tag, "pre" | "code" | "kbd" | "samp" | "tt") {
-            ctx.in_pre = true;
+            ctx.set_in_pre(true);
         }
 
         // Recursively convert children.
@@ -355,7 +345,7 @@ impl Converter {
         }
 
         // Restore `<pre>` context.
-        ctx.in_pre = was_in_pre;
+        ctx.set_in_pre(was_in_pre);
 
         // Check if raw HTML should be kept.
         if self.keep_tags.contains(tag) {

@@ -28,24 +28,30 @@ pub mod plugins;
 pub mod rules;
 
 pub(crate) mod converter;
-pub(crate) mod error;
 pub(crate) mod options;
-pub(crate) mod plugin;
-pub(crate) mod rule;
 
 mod context;
+mod dom;
 mod escape;
-mod utils;
 mod whitespace;
 
-// Re-export `Context` so external `Rule` implementors can use it.
 pub use context::Context;
-pub use converter::{Converter, ConverterBuilder};
-pub use error::{Error, Result};
+pub use converter::{Action, Converter, ConverterBuilder, Plugin, Rule};
 pub use options::{
     CodeBlockStyle, EscapeMode, Fence, HeadingStyle, LinkReferenceStyle, LinkStyle, Options,
 };
-pub use rule::{Action, Rule};
+
+/// Errors that can occur during HTML-to-Markdown conversion.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum Error {
+    /// An I/O error occurred while reading input.
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+}
+
+/// A specialized [`Result`] type for h2m operations.
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Converts HTML to Markdown using default `CommonMark` settings.
 ///

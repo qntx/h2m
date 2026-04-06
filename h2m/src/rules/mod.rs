@@ -2,17 +2,44 @@
 
 mod blockquote;
 mod code_block;
+mod emphasis;
 mod heading;
+mod horizontal_rule;
 mod iframe;
 mod image;
-mod inline;
+mod inline_code;
+mod line_break;
 mod link;
 mod list;
-mod misc;
 mod paragraph;
+mod strong;
 
-use crate::converter::ConverterBuilder;
-use crate::plugin::Plugin;
+use crate::converter::{ConverterBuilder, Plugin};
+
+/// Wraps each non-empty line with `delimiter` so that bold/italic spanning
+/// multiple lines is rendered correctly.
+///
+/// Shared by [`strong::Strong`] and [`emphasis::Emphasis`].
+pub(crate) fn wrap_delimiter_per_line(text: &str, delimiter: &str) -> String {
+    if !text.contains('\n') {
+        return format!("{delimiter}{text}{delimiter}");
+    }
+
+    let mut result = String::with_capacity(text.len() + delimiter.len() * 4);
+    for (i, line) in text.split('\n').enumerate() {
+        if i > 0 {
+            result.push('\n');
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        result.push_str(delimiter);
+        result.push_str(trimmed);
+        result.push_str(delimiter);
+    }
+    result
+}
 
 /// The `CommonMark` plugin — registers all built-in rules for standard HTML
 /// tags.
@@ -26,19 +53,19 @@ pub struct CommonMark;
 
 impl Plugin for CommonMark {
     fn register(&self, builder: &mut ConverterBuilder) {
-        builder.add_rule(paragraph::ParagraphRule);
-        builder.add_rule(heading::HeadingRule);
-        builder.add_rule(code_block::CodeBlockRule);
-        builder.add_rule(blockquote::BlockquoteRule);
-        builder.add_rule(list::ListRule);
-        builder.add_rule(list::ListItemRule);
-        builder.add_rule(misc::HorizontalRuleRule);
-        builder.add_rule(misc::LineBreakRule);
-        builder.add_rule(inline::StrongRule);
-        builder.add_rule(inline::EmphasisRule);
-        builder.add_rule(inline::InlineCodeRule);
-        builder.add_rule(link::LinkRule);
-        builder.add_rule(image::ImageRule);
-        builder.add_rule(iframe::IframeRule);
+        builder.add_rule(paragraph::Paragraph);
+        builder.add_rule(heading::Heading);
+        builder.add_rule(code_block::CodeBlock);
+        builder.add_rule(blockquote::Blockquote);
+        builder.add_rule(list::List);
+        builder.add_rule(list::ListItem);
+        builder.add_rule(horizontal_rule::HorizontalRule);
+        builder.add_rule(line_break::LineBreak);
+        builder.add_rule(strong::Strong);
+        builder.add_rule(emphasis::Emphasis);
+        builder.add_rule(inline_code::InlineCode);
+        builder.add_rule(link::Link);
+        builder.add_rule(image::Image);
+        builder.add_rule(iframe::Iframe);
     }
 }
