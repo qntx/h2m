@@ -14,7 +14,7 @@ impl Rule for BlockquoteRule {
         &["blockquote"]
     }
 
-    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &Context) -> Action {
+    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &mut Context) -> Action {
         let trimmed = content.trim();
         if trimmed.is_empty() {
             return Action::Skip;

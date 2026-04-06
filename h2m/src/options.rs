@@ -57,6 +57,30 @@ pub enum EscapeMode {
     Disabled,
 }
 
+/// Style for rendering links.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum LinkStyle {
+    /// Inline links: `[text](url "title")`.
+    #[default]
+    Inlined,
+    /// Reference-style links: `[text][id]` with a footer `[id]: url "title"`.
+    Referenced,
+}
+
+/// Style for reference-style link identifiers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum LinkReferenceStyle {
+    /// Full reference: `[text][id]` / `[id]: url`.
+    #[default]
+    Full,
+    /// Collapsed reference: `[text][]` / `[text]: url`.
+    Collapsed,
+    /// Shortcut reference: `[text]` / `[text]: url`.
+    Shortcut,
+}
+
 /// Configuration options for the converter.
 ///
 /// Use [`Default::default()`] for sensible `CommonMark` defaults.
@@ -79,6 +103,10 @@ pub struct Options {
     pub horizontal_rule: &'static str,
     /// Escape mode for markdown special characters.
     pub escape_mode: EscapeMode,
+    /// Link rendering style.
+    pub link_style: LinkStyle,
+    /// Reference-style link identifier format.
+    pub link_reference_style: LinkReferenceStyle,
 }
 
 impl Default for Options {
@@ -92,6 +120,8 @@ impl Default for Options {
             strong_delimiter: "**",
             horizontal_rule: "---",
             escape_mode: EscapeMode::default(),
+            link_style: LinkStyle::default(),
+            link_reference_style: LinkReferenceStyle::default(),
         }
     }
 }

@@ -31,15 +31,24 @@ pub struct Context {
     /// Whether we are currently inside a `<pre>` or inline `<code>` element,
     /// where text should not be whitespace-collapsed or escaped.
     pub(crate) in_pre: bool,
+    /// Optional base domain for resolving relative URLs to absolute.
+    pub(crate) domain: Option<String>,
+    /// Accumulated reference-style link definitions (appended after body).
+    pub(crate) references: Vec<String>,
+    /// Monotonically increasing link index for `LinkReferenceStyle::Full`.
+    pub(crate) link_index: usize,
 }
 
 impl Context {
-    /// Creates a new context with the given options.
-    pub(crate) fn new(options: Options) -> Self {
+    /// Creates a new context with the given options and optional domain.
+    pub(crate) fn new(options: Options, domain: Option<String>) -> Self {
         Self {
             options,
             list_metadata: HashMap::new(),
             in_pre: false,
+            domain,
+            references: Vec::new(),
+            link_index: 0,
         }
     }
 
@@ -55,5 +64,20 @@ impl Context {
     #[must_use]
     pub fn list_metadata(&self, id: NodeId) -> Option<&ListMetadata> {
         self.list_metadata.get(&id)
+    }
+
+    /// Returns the base domain used for resolving relative URLs.
+    #[inline]
+    #[must_use]
+    pub fn domain(&self) -> Option<&str> {
+        self.domain.as_deref()
+    }
+
+    /// Pushes a reference-style link definition and returns the next link
+    /// index.
+    pub fn push_reference(&mut self, reference: String) -> usize {
+        self.link_index += 1;
+        self.references.push(reference);
+        self.link_index
     }
 }

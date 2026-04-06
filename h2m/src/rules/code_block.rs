@@ -18,7 +18,7 @@ impl Rule for CodeBlockRule {
         &["pre"]
     }
 
-    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &Context) -> Action {
+    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
         match ctx.options().code_block_style {
             CodeBlockStyle::Fenced => Self::fenced(content, element, ctx),
             CodeBlockStyle::Indented => Self::indented(content),

@@ -1,0 +1,39 @@
+//! Iframe (`<iframe>`) conversion rule.
+
+use scraper::ElementRef;
+
+use crate::context::Context;
+use crate::rule::{Action, Rule};
+use crate::utils;
+
+/// Handles `<iframe>` elements by converting them to markdown links.
+///
+/// For `data:text/html` iframes, the embedded content is skipped (would
+/// require a nested converter). For regular iframes, the `src` is rendered
+/// as a link.
+#[derive(Debug, Clone, Copy)]
+pub struct IframeRule;
+
+impl Rule for IframeRule {
+    fn tags(&self) -> &'static [&'static str] {
+        &["iframe"]
+    }
+
+    fn apply(&self, _content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
+        let Some(src) = utils::attr(element, "src") else {
+            return Action::Replace(String::new());
+        };
+
+        if src.trim().is_empty() {
+            return Action::Replace(String::new());
+        }
+
+        // Skip data URIs (would need nested HTML parsing).
+        if src.starts_with("data:") {
+            return Action::Replace(String::new());
+        }
+
+        let absolute_url = utils::resolve_url(ctx.domain(), src);
+        Action::Replace(format!("[iframe]({absolute_url})"))
+    }
+}

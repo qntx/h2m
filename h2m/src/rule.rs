@@ -31,6 +31,7 @@ pub trait Rule: Send + Sync {
     /// * `content` - The already-converted markdown content of the element's
     ///   children.
     /// * `element` - The HTML element being converted.
-    /// * `ctx` - The current conversion context with options and state.
-    fn apply(&self, content: &str, element: &scraper::ElementRef<'_>, ctx: &Context) -> Action;
+    /// * `ctx` - The current conversion context with options and mutable state
+    ///   (e.g. for accumulating reference-style link definitions).
+    fn apply(&self, content: &str, element: &scraper::ElementRef<'_>, ctx: &mut Context) -> Action;
 }

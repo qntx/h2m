@@ -15,7 +15,7 @@ impl Rule for TaskListRule {
         &["input"]
     }
 
-    fn apply(&self, _content: &str, element: &ElementRef<'_>, _ctx: &Context) -> Action {
+    fn apply(&self, _content: &str, element: &ElementRef<'_>, _ctx: &mut Context) -> Action {
         let is_checkbox =
             utils::attr(element, "type").is_some_and(|t| t.eq_ignore_ascii_case("checkbox"));
 
@@ -23,7 +23,11 @@ impl Rule for TaskListRule {
             return Action::Skip;
         }
 
-        // The trailing space is typically provided by whitespace in the HTML.
+        // Only convert checkboxes that are direct children of a <li>.
+        if !utils::parent_tag_is(element, "li") {
+            return Action::Skip;
+        }
+
         let checked = element.value().attr("checked").is_some();
         if checked {
             Action::Replace("[x]".to_owned())

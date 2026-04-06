@@ -15,7 +15,7 @@ impl Rule for ListRule {
         &["ul", "ol"]
     }
 
-    fn apply(&self, content: &str, element: &ElementRef<'_>, _ctx: &Context) -> Action {
+    fn apply(&self, content: &str, element: &ElementRef<'_>, _ctx: &mut Context) -> Action {
         let trimmed = content.trim_end_matches('\n');
         if trimmed.is_empty() {
             return Action::Skip;
@@ -38,7 +38,7 @@ impl Rule for ListItemRule {
         &["li"]
     }
 
-    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &Context) -> Action {
+    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
         let node_id = element.id();
         let Some(meta) = ctx.list_metadata(node_id) else {
             let trimmed = content.trim();

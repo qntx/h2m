@@ -42,7 +42,9 @@ mod whitespace;
 pub use context::Context;
 pub use converter::{Converter, ConverterBuilder};
 pub use error::{Error, Result};
-pub use options::{CodeBlockStyle, EscapeMode, Fence, HeadingStyle, Options};
+pub use options::{
+    CodeBlockStyle, EscapeMode, Fence, HeadingStyle, LinkReferenceStyle, LinkStyle, Options,
+};
 pub use rule::{Action, Rule};
 
 /// Converts HTML to Markdown using default `CommonMark` settings.

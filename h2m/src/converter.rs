@@ -26,6 +26,8 @@ pub struct ConverterBuilder {
     keep_tags: HashSet<String>,
     /// Tags (and their content) to remove entirely from the output.
     remove_tags: HashSet<String>,
+    /// Base domain for resolving relative URLs.
+    domain: Option<String>,
 }
 
 impl std::fmt::Debug for ConverterBuilder {
@@ -38,6 +40,7 @@ impl std::fmt::Debug for ConverterBuilder {
             )
             .field("keep_tags", &self.keep_tags)
             .field("remove_tags", &self.remove_tags)
+            .field("domain", &self.domain)
             .finish()
     }
 }
@@ -89,6 +92,16 @@ impl ConverterBuilder {
         self
     }
 
+    /// Sets the base domain for resolving relative URLs to absolute.
+    ///
+    /// For example, setting `"example.com"` will turn `/page.html` into
+    /// `http://example.com/page.html`.
+    #[must_use]
+    pub fn domain(mut self, domain: impl Into<String>) -> Self {
+        self.domain = Some(domain.into());
+        self
+    }
+
     /// Builds the frozen [`Converter`].
     #[must_use]
     pub fn build(self) -> Converter {
@@ -97,6 +110,7 @@ impl ConverterBuilder {
             rules: self.rules,
             keep_tags: self.keep_tags,
             remove_tags: self.remove_tags,
+            domain: self.domain,
         }
     }
 }
@@ -114,6 +128,8 @@ pub struct Converter {
     keep_tags: HashSet<String>,
     /// Tags to remove entirely.
     remove_tags: HashSet<String>,
+    /// Base domain for resolving relative URLs.
+    domain: Option<String>,
 }
 
 impl std::fmt::Debug for Converter {
@@ -126,6 +142,7 @@ impl std::fmt::Debug for Converter {
             )
             .field("keep_tags", &self.keep_tags)
             .field("remove_tags", &self.remove_tags)
+            .field("domain", &self.domain)
             .finish()
     }
 }
@@ -152,14 +169,20 @@ impl Converter {
     /// html5ever recovers from malformed HTML.
     pub fn convert(&self, html: &str) -> crate::Result<String> {
         let document = Html::parse_document(html);
-        let mut ctx = Context::new(self.options);
+        let mut ctx = Context::new(self.options, self.domain.clone());
 
         // Pre-pass: compute list metadata.
         self.annotate_lists(&document, &mut ctx);
 
         // Traverse from the root element (<html>).
         let root_id = document.root_element().id();
-        let output = self.process_node(root_id, &document, &mut ctx);
+        let mut output = self.process_node(root_id, &document, &mut ctx);
+
+        // Append reference-style link definitions if any.
+        if !ctx.references.is_empty() {
+            output.push_str("\n\n");
+            output.push_str(&ctx.references.join("\n"));
+        }
 
         Ok(whitespace::clean_output(&output))
     }
@@ -342,7 +365,7 @@ impl Converter {
         // Dispatch to rules (LIFO — last registered wins).
         if let Some(rules) = self.rules.get(tag) {
             for rule in rules.iter().rev() {
-                match rule.apply(&content, element, ctx) {
+                match rule.apply(&content, element, &mut *ctx) {
                     Action::Replace(md) => return md,
                     Action::Remove => return String::new(),
                     Action::Skip => {}

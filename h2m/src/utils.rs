@@ -1,6 +1,8 @@
 //! Shared utility functions.
 
+use ego_tree::NodeRef;
 use scraper::ElementRef;
+use scraper::node::Node;
 
 /// Returns the length of the longest consecutive run of `needle` in `text`.
 #[inline]
@@ -41,4 +43,105 @@ pub fn has_ancestor(element: &ElementRef<'_>, target_tag: &str) -> bool {
         current = parent.parent();
     }
     false
+}
+
+/// Returns `true` if the given element's immediate parent has the specified tag
+/// name.
+#[must_use]
+pub fn parent_tag_is(element: &ElementRef<'_>, target_tag: &str) -> bool {
+    element
+        .parent()
+        .and_then(|p| p.value().as_element())
+        .is_some_and(|el| el.name() == target_tag)
+}
+
+/// Collects all text content from a DOM subtree recursively.
+#[must_use]
+pub fn collect_text(node: &NodeRef<'_, Node>) -> String {
+    let mut buf = String::new();
+    collect_text_inner(node, &mut buf);
+    buf
+}
+
+/// Inner recursive text collector.
+fn collect_text_inner(node: &NodeRef<'_, Node>, buf: &mut String) {
+    match node.value() {
+        Node::Text(t) => buf.push_str(t),
+        _ => {
+            for child in node.children() {
+                collect_text_inner(&child, buf);
+            }
+        }
+    }
+}
+
+/// Resolves a potentially relative URL against a base domain.
+///
+/// If `domain` is `None` or the URL is already absolute, returns the URL
+/// unchanged.
+#[must_use]
+pub fn resolve_url(base_domain: Option<&str>, raw_url: &str) -> String {
+    let Some(domain) = base_domain else {
+        return raw_url.to_owned();
+    };
+
+    if domain.is_empty() {
+        return raw_url.to_owned();
+    }
+
+    // Already absolute or data URI.
+    if raw_url.contains("://") || raw_url.starts_with("data:") || raw_url.starts_with("mailto:") {
+        return raw_url.to_owned();
+    }
+
+    // Protocol-relative URL.
+    if raw_url.starts_with("//") {
+        return format!("http:{raw_url}");
+    }
+
+    // Absolute path.
+    if raw_url.starts_with('/') {
+        return format!("http://{domain}{raw_url}");
+    }
+
+    // Relative path.
+    format!("http://{domain}/{raw_url}")
+}
+
+/// Adds a leading/trailing space around `markdown` if the neighbouring DOM
+/// text would otherwise run into the delimiter without whitespace.
+///
+/// This mirrors the Go `AddSpaceIfNessesary` function.
+#[must_use]
+pub fn add_space_if_necessary(element: &ElementRef<'_>, markdown: String) -> String {
+    let node = element.id();
+    let tree = element.tree();
+    let Some(node_ref) = tree.get(node) else {
+        return markdown;
+    };
+
+    let mut result = markdown;
+
+    // Check previous sibling text.
+    if let Some(prev) = node_ref.prev_sibling() {
+        let text = collect_text(&prev);
+        if let Some(last_char) = text.chars().next_back()
+            && !last_char.is_whitespace()
+        {
+            result.insert(0, ' ');
+        }
+    }
+
+    // Check next sibling text.
+    if let Some(next) = node_ref.next_sibling() {
+        let text = collect_text(&next);
+        if let Some(first_char) = text.chars().next()
+            && !first_char.is_whitespace()
+            && !first_char.is_ascii_punctuation()
+        {
+            result.push(' ');
+        }
+    }
+
+    result
 }

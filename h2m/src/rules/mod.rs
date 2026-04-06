@@ -3,6 +3,7 @@
 mod blockquote;
 mod code_block;
 mod heading;
+mod iframe;
 mod image;
 mod inline;
 mod link;
@@ -38,5 +39,6 @@ impl Plugin for CommonMark {
         builder.add_rule(inline::InlineCodeRule);
         builder.add_rule(link::LinkRule);
         builder.add_rule(image::ImageRule);
+        builder.add_rule(iframe::IframeRule);
     }
 }

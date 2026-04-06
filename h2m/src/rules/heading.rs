@@ -5,6 +5,7 @@ use scraper::ElementRef;
 use crate::context::Context;
 use crate::options::HeadingStyle;
 use crate::rule::{Action, Rule};
+use crate::utils;
 
 /// ATX heading prefixes indexed by level (0-indexed, level 1 → index 0).
 const ATX_PREFIXES: [&str; 6] = ["#", "##", "###", "####", "#####", "######"];
@@ -18,13 +19,25 @@ impl Rule for HeadingRule {
         &["h1", "h2", "h3", "h4", "h5", "h6"]
     }
 
-    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &Context) -> Action {
+    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
         let tag = element.value().name();
         let level = heading_level(tag);
-        let trimmed = content.trim().replace('\n', " ");
+
+        // Normalize: collapse newlines/carriage-returns to spaces, escape `#`.
+        let trimmed = content
+            .trim()
+            .replace(['\n', '\r'], " ")
+            .replace('#', "\\#");
 
         if trimmed.is_empty() {
             return Action::Skip;
+        }
+
+        // If the heading is inside an <a> link, render as bold instead.
+        if utils::has_ancestor(element, "a") {
+            let delim = ctx.options().strong_delimiter;
+            let text = format!("{delim}{trimmed}{delim}");
+            return Action::Replace(utils::add_space_if_necessary(element, text));
         }
 
         let md = match ctx.options().heading_style {

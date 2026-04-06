@@ -3,10 +3,11 @@
 use scraper::ElementRef;
 
 use crate::context::Context;
+use crate::options::{LinkReferenceStyle, LinkStyle};
 use crate::rule::{Action, Rule};
 use crate::utils;
 
-/// Handles `<a>` elements as inline links: `[text](href "title")`.
+/// Handles `<a>` elements with support for inline and reference-style links.
 #[derive(Debug, Clone, Copy)]
 pub struct LinkRule;
 
@@ -15,20 +16,108 @@ impl Rule for LinkRule {
         &["a"]
     }
 
-    fn apply(&self, content: &str, element: &ElementRef<'_>, _ctx: &Context) -> Action {
+    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
         let href = utils::attr(element, "href").unwrap_or("");
-        let title = utils::attr(element, "title");
 
-        // Skip empty links.
-        if href.is_empty() && content.trim().is_empty() {
-            return Action::Skip;
+        // Skip non-link anchors.
+        if href.is_empty() || href.trim() == "#" {
+            return Action::Replace(content.to_owned());
         }
 
-        // If content is empty, use the URL as the text.
-        let trimmed = content.trim();
-        let display = if trimmed.is_empty() { href } else { trimmed };
+        let absolute_href = utils::resolve_url(ctx.domain(), href);
+
+        // Multiline content: escape newlines so the link text stays on one
+        // logical line.
+        let escaped_content = escape_multiline(content);
+
+        // Title attribute (escape internal quotes).
+        let title =
+            utils::attr(element, "title").map(|t| t.replace('\n', " ").replace('"', "\\\""));
+
+        // If content is empty, fall back to title or aria-label attribute.
+        let display = if escaped_content.trim().is_empty() {
+            let fallback = utils::attr(element, "title")
+                .or_else(|| utils::attr(element, "aria-label"))
+                .unwrap_or("")
+                .to_owned();
+            if fallback.is_empty() {
+                return Action::Replace(String::new());
+            }
+            fallback
+        } else {
+            escaped_content
+        };
+
+        // If the content is a markdown image whose src matches the link href,
+        // return just the image to avoid redundant `[![](url)](url)`.
+        let trimmed_display = display.trim();
+        if title.is_none()
+            && trimmed_display.starts_with("![")
+            && let Some(img_url) = extract_markdown_image_url(trimmed_display)
+            && img_url == absolute_href
+        {
+            return Action::Replace(utils::add_space_if_necessary(
+                element,
+                trimmed_display.to_owned(),
+            ));
+        }
 
         let title_part = title.map_or_else(String::new, |t| format!(" \"{t}\""));
-        Action::Replace(format!("[{display}]({href}{title_part})"))
+
+        let md = match ctx.options().link_style {
+            LinkStyle::Inlined => {
+                format!("[{display}]({absolute_href}{title_part})")
+            }
+            LinkStyle::Referenced => {
+                build_reference_link(&display, &absolute_href, &title_part, ctx)
+            }
+        };
+
+        Action::Replace(utils::add_space_if_necessary(element, md))
     }
+}
+
+/// Builds a reference-style link and pushes the definition into `ctx`.
+fn build_reference_link(display: &str, href: &str, title_part: &str, ctx: &mut Context) -> String {
+    match ctx.options().link_reference_style {
+        LinkReferenceStyle::Full => {
+            let idx = ctx.push_reference(format!(
+                "[{idx}]: {href}{title_part}",
+                idx = ctx.link_index + 1
+            ));
+            format!("[{display}][{idx}]")
+        }
+        LinkReferenceStyle::Collapsed => {
+            ctx.push_reference(format!("[{display}]: {href}{title_part}"));
+            format!("[{display}][]")
+        }
+        LinkReferenceStyle::Shortcut => {
+            ctx.push_reference(format!("[{display}]: {href}{title_part}"));
+            format!("[{display}]")
+        }
+    }
+}
+
+/// Escapes newlines in link content so multi-line text works inside `[...]`.
+fn escape_multiline(content: &str) -> String {
+    let trimmed = content.trim();
+    if !trimmed.contains('\n') {
+        return trimmed.to_owned();
+    }
+    // Replace newlines with escaped newline continuation.
+    trimmed.replace('\n', "\\\n")
+}
+
+/// Extracts the URL from a markdown image `![alt](url)`.
+fn extract_markdown_image_url(md: &str) -> Option<&str> {
+    let rest = md.strip_prefix("![")?;
+    let after_alt = rest.find("](")?;
+    let url_start = after_alt + 2;
+    let url_part = &rest[url_start..];
+    // Find closing `)` — skip optional title.
+    let end = url_part.find(')')?;
+    let url = url_part[..end].trim();
+    // Strip optional title in quotes.
+    url.find([' ', '\t'])
+        .map_or(Some(url), |idx| Some(url[..idx].trim()))
 }

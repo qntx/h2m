@@ -217,3 +217,210 @@ fn html_entities_decoded() {
     assert!(md.contains('&'));
     assert!(md.contains('<') || md.contains("\\<"));
 }
+
+#[test]
+fn heading_hash_escaped() {
+    let md = convert("<h1>C# Guide</h1>").unwrap();
+    assert_eq!(md, "# C\\# Guide");
+}
+
+#[test]
+fn heading_inside_link_renders_as_bold() {
+    let md = convert(r#"<a href="/page"><h2>Title</h2></a>"#).unwrap();
+    assert!(md.contains("**"));
+    assert!(!md.contains("## "));
+}
+
+#[test]
+fn nested_strong_dedup() {
+    let md = convert("<p><strong><strong>bold</strong></strong></p>").unwrap();
+    // Should produce a single layer of bold, not double.
+    assert_eq!(md, "**bold**");
+}
+
+#[test]
+fn nested_em_dedup() {
+    let md = convert("<p><em><em>italic</em></em></p>").unwrap();
+    assert_eq!(md, "*italic*");
+}
+
+#[test]
+fn link_empty_content_fallback_title() {
+    let md = convert(r#"<p><a href="https://example.com" title="Example"></a></p>"#).unwrap();
+    assert_eq!(md, r#"[Example](https://example.com "Example")"#);
+}
+
+#[test]
+fn link_empty_content_fallback_aria_label() {
+    let md = convert(r#"<p><a href="https://example.com" aria-label="Example"></a></p>"#).unwrap();
+    assert_eq!(md, "[Example](https://example.com)");
+}
+
+#[test]
+fn link_anchor_no_href_passthrough() {
+    let md = convert("<p><a>just text</a></p>").unwrap();
+    assert_eq!(md, "just text");
+}
+
+#[test]
+fn link_hash_only_passthrough() {
+    let md = convert(r##"<p><a href="#">click</a></p>"##).unwrap();
+    assert_eq!(md, "click");
+}
+
+#[test]
+fn image_with_domain() {
+    let converter = h2m::Converter::builder()
+        .use_plugin(h2m::rules::CommonMark)
+        .domain("example.com")
+        .build();
+    let md = converter
+        .convert(r#"<img src="/img/cat.png" alt="cat"/>"#)
+        .unwrap();
+    assert_eq!(md, "![cat](http://example.com/img/cat.png)");
+}
+
+#[test]
+fn link_with_domain() {
+    let converter = h2m::Converter::builder()
+        .use_plugin(h2m::rules::CommonMark)
+        .domain("example.com")
+        .build();
+    let md = converter.convert(r#"<a href="/about">About</a>"#).unwrap();
+    assert_eq!(md, "[About](http://example.com/about)");
+}
+
+#[test]
+fn link_absolute_url_unchanged() {
+    let converter = h2m::Converter::builder()
+        .use_plugin(h2m::rules::CommonMark)
+        .domain("example.com")
+        .build();
+    let md = converter
+        .convert(r#"<a href="https://other.com/page">Link</a>"#)
+        .unwrap();
+    assert_eq!(md, "[Link](https://other.com/page)");
+}
+
+#[test]
+fn referenced_link_full() {
+    let mut opts = h2m::Options::default();
+    opts.link_style = h2m::LinkStyle::Referenced;
+    opts.link_reference_style = h2m::LinkReferenceStyle::Full;
+    let converter = h2m::Converter::builder()
+        .options(opts)
+        .use_plugin(h2m::rules::CommonMark)
+        .build();
+    let md = converter
+        .convert(r#"<p><a href="https://rust-lang.org">Rust</a></p>"#)
+        .unwrap();
+    assert!(md.contains("[Rust][1]"));
+    assert!(md.contains("[1]: https://rust-lang.org"));
+}
+
+#[test]
+fn referenced_link_collapsed() {
+    let mut opts = h2m::Options::default();
+    opts.link_style = h2m::LinkStyle::Referenced;
+    opts.link_reference_style = h2m::LinkReferenceStyle::Collapsed;
+    let converter = h2m::Converter::builder()
+        .options(opts)
+        .use_plugin(h2m::rules::CommonMark)
+        .build();
+    let md = converter
+        .convert(r#"<p><a href="https://rust-lang.org">Rust</a></p>"#)
+        .unwrap();
+    assert!(md.contains("[Rust][]"));
+    assert!(md.contains("[Rust]: https://rust-lang.org"));
+}
+
+#[test]
+fn referenced_link_shortcut() {
+    let mut opts = h2m::Options::default();
+    opts.link_style = h2m::LinkStyle::Referenced;
+    opts.link_reference_style = h2m::LinkReferenceStyle::Shortcut;
+    let converter = h2m::Converter::builder()
+        .options(opts)
+        .use_plugin(h2m::rules::CommonMark)
+        .build();
+    let md = converter
+        .convert(r#"<p><a href="https://rust-lang.org">Rust</a></p>"#)
+        .unwrap();
+    assert!(md.contains("[Rust]"));
+    assert!(md.contains("[Rust]: https://rust-lang.org"));
+    // Should NOT contain the collapsed form.
+    assert!(!md.contains("[Rust][]"));
+}
+
+#[test]
+fn hr_inside_heading_suppressed() {
+    let md = convert("<h2>Title<hr/>More</h2>").unwrap();
+    assert!(!md.contains("---"));
+    assert!(md.contains("Title"));
+}
+
+#[test]
+fn iframe_rendered_as_link() {
+    let md = convert(r#"<iframe src="https://example.com/embed"></iframe>"#).unwrap();
+    assert_eq!(md, "[iframe](https://example.com/embed)");
+}
+
+#[test]
+fn iframe_with_domain() {
+    let converter = h2m::Converter::builder()
+        .use_plugin(h2m::rules::CommonMark)
+        .domain("example.com")
+        .build();
+    let md = converter
+        .convert(r#"<iframe src="/embed/video"></iframe>"#)
+        .unwrap();
+    assert_eq!(md, "[iframe](http://example.com/embed/video)");
+}
+
+#[test]
+fn iframe_data_uri_skipped() {
+    let md = convert(r#"<iframe src="data:text/html,<h1>hi</h1>"></iframe>"#).unwrap();
+    assert_eq!(md, "");
+}
+
+#[test]
+fn noscript_removed() {
+    let md = convert("<p>hello</p><noscript>fallback</noscript><p>world</p>").unwrap();
+    assert_eq!(md, "hello\n\nworld");
+}
+
+#[test]
+fn keep_tags() {
+    let converter = h2m::Converter::builder()
+        .use_plugin(h2m::rules::CommonMark)
+        .keep(&["custom-tag"])
+        .build();
+    let md = converter
+        .convert("<p>before</p><custom-tag>inside</custom-tag><p>after</p>")
+        .unwrap();
+    assert!(md.contains("<custom-tag>"));
+}
+
+#[test]
+fn remove_tags() {
+    let converter = h2m::Converter::builder()
+        .use_plugin(h2m::rules::CommonMark)
+        .remove(&["aside"])
+        .build();
+    let md = converter
+        .convert("<p>before</p><aside>sidebar</aside><p>after</p>")
+        .unwrap();
+    assert!(!md.contains("sidebar"));
+    assert!(md.contains("before"));
+    assert!(md.contains("after"));
+}
+
+#[test]
+fn convert_reader_works() {
+    let converter = h2m::Converter::builder()
+        .use_plugin(h2m::rules::CommonMark)
+        .build();
+    let html = b"<h1>Hello</h1>";
+    let md = converter.convert_reader(&html[..]).unwrap();
+    assert_eq!(md, "# Hello");
+}
