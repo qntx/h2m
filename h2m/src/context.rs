@@ -9,14 +9,36 @@ use crate::options::Options;
 
 /// Metadata computed during the list pre-pass for each `<li>` element.
 #[derive(Debug, Clone)]
-#[non_exhaustive]
 pub struct ListMetadata {
     /// The list item prefix (e.g., `"- "`, `"1. "`, `"10. "`).
-    pub prefix: String,
+    prefix: String,
     /// The character width of the prefix, used for continuation indent.
-    pub prefix_width: usize,
+    prefix_width: usize,
     /// The total indentation from all ancestor lists.
-    pub parent_indent: usize,
+    parent_indent: usize,
+}
+
+impl ListMetadata {
+    /// Returns the list item prefix (e.g., `"- "`, `"1. "`, `"10. "`).
+    #[inline]
+    #[must_use]
+    pub fn prefix(&self) -> &str {
+        &self.prefix
+    }
+
+    /// Returns the character width of the prefix, used for continuation indent.
+    #[inline]
+    #[must_use]
+    pub const fn prefix_width(&self) -> usize {
+        self.prefix_width
+    }
+
+    /// Returns the total indentation from all ancestor lists.
+    #[inline]
+    #[must_use]
+    pub const fn parent_indent(&self) -> usize {
+        self.parent_indent
+    }
 }
 
 /// State maintained during the conversion traversal.
@@ -24,7 +46,7 @@ pub struct ListMetadata {
 /// Passed to [`Rule::apply`](crate::Rule::apply) so rules can access
 /// conversion options and list metadata.
 #[derive(Debug)]
-pub struct Context {
+pub struct Context<'a> {
     /// The conversion options.
     pub(crate) options: Options,
     /// Pre-computed list metadata keyed by the `<li>` element's node ID.
@@ -33,16 +55,16 @@ pub struct Context {
     /// where text should not be whitespace-collapsed or escaped.
     pub(crate) in_pre: bool,
     /// Optional base domain for resolving relative URLs to absolute.
-    pub(crate) domain: Option<String>,
+    pub(crate) domain: Option<&'a str>,
     /// Accumulated reference-style link definitions (appended after body).
     pub(crate) references: Vec<String>,
     /// Monotonically increasing link index for `LinkReferenceStyle::Full`.
     pub(crate) link_index: usize,
 }
 
-impl Context {
+impl<'a> Context<'a> {
     /// Creates a new context with the given options and optional domain.
-    pub(crate) fn new(options: Options, domain: Option<String>) -> Self {
+    pub(crate) fn new(options: Options, domain: Option<&'a str>) -> Self {
         Self {
             options,
             list_metadata: HashMap::new(),
@@ -83,16 +105,16 @@ impl Context {
     /// Returns the base domain used for resolving relative URLs.
     #[inline]
     #[must_use]
-    pub fn domain(&self) -> Option<&str> {
-        self.domain.as_deref()
+    pub const fn domain(&self) -> Option<&str> {
+        self.domain
     }
 
     /// Resolves a potentially relative URL against the configured base domain.
     ///
     /// Returns the URL unchanged (as a borrow) when no resolution is needed.
     #[must_use]
-    pub fn resolve_url<'a>(&self, raw_url: &'a str) -> Cow<'a, str> {
-        let Some(domain) = self.domain.as_deref() else {
+    pub fn resolve_url<'u>(&self, raw_url: &'u str) -> Cow<'u, str> {
+        let Some(domain) = self.domain else {
             return Cow::Borrowed(raw_url);
         };
 
@@ -120,7 +142,15 @@ impl Context {
             .map_or(Cow::Borrowed(raw_url), |u| Cow::Owned(u.to_string()))
     }
 
-    /// Pushes a reference-style link definition and returns the next link
+    /// Returns the index that the next [`push_reference`](Self::push_reference)
+    /// call will assign, without mutating state.
+    #[inline]
+    #[must_use]
+    pub(crate) const fn next_link_index(&self) -> usize {
+        self.link_index + 1
+    }
+
+    /// Pushes a reference-style link definition and returns the assigned link
     /// index.
     pub fn push_reference(&mut self, reference: String) -> usize {
         self.link_index += 1;
@@ -245,7 +275,7 @@ mod tests {
 
     use super::*;
 
-    fn make_ctx(domain: Option<String>) -> Context {
+    fn make_ctx(domain: Option<&str>) -> Context<'_> {
         Context::new(Options::default(), domain)
     }
 
@@ -258,13 +288,13 @@ mod tests {
 
     #[test]
     fn resolve_empty_domain() {
-        let ctx = make_ctx(Some(String::new()));
+        let ctx = make_ctx(Some(""));
         assert_eq!(ctx.resolve_url("/about"), "/about");
     }
 
     #[test]
     fn resolve_absolute_url_unchanged() {
-        let ctx = make_ctx(Some("example.com".to_owned()));
+        let ctx = make_ctx(Some("example.com"));
         let r = ctx.resolve_url("https://other.com/page");
         assert_eq!(r, "https://other.com/page");
         assert!(matches!(r, Cow::Borrowed(_)));
@@ -272,25 +302,25 @@ mod tests {
 
     #[test]
     fn resolve_relative_with_bare_domain() {
-        let ctx = make_ctx(Some("example.com".to_owned()));
+        let ctx = make_ctx(Some("example.com"));
         assert_eq!(ctx.resolve_url("/about"), "https://example.com/about");
     }
 
     #[test]
     fn resolve_relative_with_protocol() {
-        let ctx = make_ctx(Some("https://example.com".to_owned()));
+        let ctx = make_ctx(Some("https://example.com"));
         assert_eq!(ctx.resolve_url("/about"), "https://example.com/about");
     }
 
     #[test]
     fn resolve_bare_domain_uses_https() {
-        let ctx = make_ctx(Some("example.com".to_owned()));
+        let ctx = make_ctx(Some("example.com"));
         assert_eq!(ctx.resolve_url("/path"), "https://example.com/path");
     }
 
     #[test]
     fn resolve_protocol_relative_url() {
-        let ctx = make_ctx(Some("https://example.com".to_owned()));
+        let ctx = make_ctx(Some("https://example.com"));
         assert_eq!(
             ctx.resolve_url("//cdn.example.com/a.js"),
             "https://cdn.example.com/a.js"

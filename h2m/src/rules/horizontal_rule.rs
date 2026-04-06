@@ -17,7 +17,7 @@ impl Rule for HorizontalRule {
         &["hr"]
     }
 
-    fn apply(&self, _content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
+    fn apply(&self, _content: &str, element: &ElementRef<'_>, ctx: &mut Context<'_>) -> Action {
         if is_inside_heading(element) {
             return Action::Replace(String::new());
         }

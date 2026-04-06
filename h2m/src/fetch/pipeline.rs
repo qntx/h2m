@@ -1,5 +1,6 @@
 //! Conversion pipeline: raw HTML → `FetchResult`.
 
+use std::borrow::Cow;
 use std::time::Instant;
 
 use super::types::{ContentExtraction, ConvertConfig, FetchResult, ResponseMeta};
@@ -19,10 +20,10 @@ pub fn convert_to_result(
     let content_length = raw_html.len();
     let doc = scraper::Html::parse_document(raw_html);
 
-    let html_to_convert = match &cfg.content {
-        ContentExtraction::Full => raw_html.to_owned(),
-        ContentExtraction::Selector(sel) => html::select_doc(&doc, raw_html, sel),
-        ContentExtraction::Readable => html::readable_content_doc(&doc, raw_html),
+    let html_to_convert: Cow<'_, str> = match &cfg.content {
+        ContentExtraction::Full => Cow::Borrowed(raw_html),
+        ContentExtraction::Selector(sel) => Cow::Owned(html::select_doc(&doc, raw_html, sel)),
+        ContentExtraction::Readable => Cow::Owned(html::readable_content_doc(&doc, raw_html)),
     };
 
     let title = html::extract_title_doc(&doc);

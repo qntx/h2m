@@ -1,5 +1,7 @@
 //! Inline code (`<code>`, `<kbd>`, `<samp>`, `<tt>`) conversion rule.
 
+use std::borrow::Cow;
+
 use scraper::ElementRef;
 
 use crate::context::Context;
@@ -18,7 +20,7 @@ impl Rule for InlineCode {
         &["code", "kbd", "samp", "tt"]
     }
 
-    fn apply(&self, content: &str, element: &ElementRef<'_>, _ctx: &mut Context) -> Action {
+    fn apply(&self, content: &str, element: &ElementRef<'_>, _ctx: &mut Context<'_>) -> Action {
         // If inside a <pre>, let the code block rule handle it.
         if dom::has_ancestor(element, "pre") {
             return Action::Skip;
@@ -50,7 +52,12 @@ impl Rule for InlineCode {
 }
 
 /// Collapses runs of 2+ newlines into a single newline.
-fn collapse_newlines(text: &str) -> String {
+///
+/// Returns the input borrowed when no consecutive newlines are found.
+fn collapse_newlines(text: &str) -> Cow<'_, str> {
+    if !text.contains("\n\n") {
+        return Cow::Borrowed(text);
+    }
     let mut result = String::with_capacity(text.len());
     let mut prev_newline = false;
     for c in text.chars() {
@@ -64,7 +71,7 @@ fn collapse_newlines(text: &str) -> String {
             prev_newline = false;
         }
     }
-    result
+    Cow::Owned(result)
 }
 
 #[cfg(test)]

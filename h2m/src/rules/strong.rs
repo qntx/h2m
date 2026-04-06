@@ -15,7 +15,7 @@ impl Rule for Strong {
         &["strong", "b"]
     }
 
-    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
+    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context<'_>) -> Action {
         // Nested dedup: if parent is also strong/b, just pass through.
         if dom::parent_tag_is(element, "strong") || dom::parent_tag_is(element, "b") {
             return Action::Replace(content.to_owned());

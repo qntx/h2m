@@ -14,7 +14,7 @@ impl Rule for LineBreak {
         &["br"]
     }
 
-    fn apply(&self, _content: &str, _element: &ElementRef<'_>, _ctx: &mut Context) -> Action {
+    fn apply(&self, _content: &str, _element: &ElementRef<'_>, _ctx: &mut Context<'_>) -> Action {
         Action::Replace("  \n".to_owned())
     }
 }

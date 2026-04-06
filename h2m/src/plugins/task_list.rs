@@ -15,7 +15,7 @@ impl Rule for TaskList {
         &["input"]
     }
 
-    fn apply(&self, _content: &str, element: &ElementRef<'_>, _ctx: &mut Context) -> Action {
+    fn apply(&self, _content: &str, element: &ElementRef<'_>, _ctx: &mut Context<'_>) -> Action {
         let is_checkbox =
             dom::attr(element, "type").is_some_and(|t| t.eq_ignore_ascii_case("checkbox"));
 

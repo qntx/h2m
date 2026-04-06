@@ -78,7 +78,7 @@ fn collect_text_inner(node: &NodeRef<'_, Node>, buf: &mut String) {
 /// Adds a leading/trailing space around `markdown` if the neighbouring DOM
 /// text would otherwise run into the delimiter without whitespace.
 ///
-/// This mirrors the Go `AddSpaceIfNessesary` function.
+/// This mirrors the Go `AddSpaceIfNecessary` function.
 #[must_use]
 pub fn add_space_if_necessary(element: &ElementRef<'_>, markdown: String) -> String {
     let node = element.id();

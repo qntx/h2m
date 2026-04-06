@@ -15,7 +15,7 @@ impl Rule for Image {
         &["img"]
     }
 
-    fn apply(&self, _content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
+    fn apply(&self, _content: &str, element: &ElementRef<'_>, ctx: &mut Context<'_>) -> Action {
         let src = dom::attr(element, "src").unwrap_or("").trim();
         if src.is_empty() {
             return Action::Skip;

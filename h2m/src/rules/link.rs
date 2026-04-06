@@ -18,7 +18,7 @@ impl Rule for Link {
         &["a"]
     }
 
-    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
+    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context<'_>) -> Action {
         let href = dom::attr(element, "href").unwrap_or("");
 
         // Skip non-link anchors.
@@ -79,10 +79,15 @@ impl Rule for Link {
 }
 
 /// Builds a reference-style link and pushes the definition into `ctx`.
-fn build_reference_link(display: &str, href: &str, title_part: &str, ctx: &mut Context) -> String {
+fn build_reference_link(
+    display: &str,
+    href: &str,
+    title_part: &str,
+    ctx: &mut Context<'_>,
+) -> String {
     match ctx.options().link_reference_style() {
         LinkReferenceStyle::Full => {
-            let idx = ctx.link_index + 1;
+            let idx = ctx.next_link_index();
             ctx.push_reference(format!("[{idx}]: {href}{title_part}"));
             format!("[{display}][{idx}]")
         }

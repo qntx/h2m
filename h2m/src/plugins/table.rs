@@ -15,7 +15,7 @@ impl Rule for TableRule {
         &["table"]
     }
 
-    fn apply(&self, _content: &str, element: &ElementRef<'_>, _ctx: &mut Context) -> Action {
+    fn apply(&self, _content: &str, element: &ElementRef<'_>, _ctx: &mut Context<'_>) -> Action {
         let rows = collect_rows(element);
         if rows.is_empty() {
             return Action::Skip;
@@ -73,7 +73,7 @@ impl Rule for TableSectionRule {
         &["thead", "tbody", "tfoot"]
     }
 
-    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &mut Context) -> Action {
+    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &mut Context<'_>) -> Action {
         Action::Replace(content.to_owned())
     }
 }
@@ -87,7 +87,7 @@ impl Rule for TableRowRule {
         &["tr"]
     }
 
-    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &mut Context) -> Action {
+    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &mut Context<'_>) -> Action {
         Action::Replace(content.to_owned())
     }
 }
@@ -101,7 +101,7 @@ impl Rule for TableCellRule {
         &["td", "th"]
     }
 
-    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &mut Context) -> Action {
+    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &mut Context<'_>) -> Action {
         Action::Replace(content.to_owned())
     }
 }

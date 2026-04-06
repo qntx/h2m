@@ -19,7 +19,7 @@ impl Rule for Iframe {
         &["iframe"]
     }
 
-    fn apply(&self, _content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
+    fn apply(&self, _content: &str, element: &ElementRef<'_>, ctx: &mut Context<'_>) -> Action {
         let Some(src) = dom::attr(element, "src") else {
             return Action::Replace(String::new());
         };

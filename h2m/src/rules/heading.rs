@@ -1,5 +1,7 @@
 //! Heading rules for `<h1>` through `<h6>`.
 
+use std::borrow::Cow;
+
 use scraper::ElementRef;
 
 use crate::context::Context;
@@ -19,15 +21,12 @@ impl Rule for Heading {
         &["h1", "h2", "h3", "h4", "h5", "h6"]
     }
 
-    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
+    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context<'_>) -> Action {
         let tag = element.value().name();
         let level = heading_level(tag);
 
         // Normalize: collapse newlines/carriage-returns to spaces, escape `#`.
-        let trimmed = content
-            .trim()
-            .replace(['\n', '\r'], " ")
-            .replace('#', "\\#");
+        let trimmed = normalize_heading(content.trim());
 
         if trimmed.is_empty() {
             return Action::Skip;
@@ -55,6 +54,25 @@ impl Rule for Heading {
 
         Action::Replace(md)
     }
+}
+
+/// Single-pass normalization: replaces `\n`/`\r` with space, escapes `#`.
+///
+/// Returns the input unchanged (via `Cow`) when no replacements are needed.
+fn normalize_heading(s: &str) -> Cow<'_, str> {
+    let needs_work = s.bytes().any(|b| matches!(b, b'\n' | b'\r' | b'#'));
+    if !needs_work {
+        return Cow::Borrowed(s);
+    }
+    let mut out = String::with_capacity(s.len() + 4);
+    for ch in s.chars() {
+        match ch {
+            '\n' | '\r' => out.push(' '),
+            '#' => out.push_str("\\#"),
+            _ => out.push(ch),
+        }
+    }
+    Cow::Owned(out)
 }
 
 /// Extracts the heading level (1-6) from a tag name like `"h2"`.

@@ -15,7 +15,7 @@ impl Rule for Emphasis {
         &["em", "i"]
     }
 
-    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
+    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context<'_>) -> Action {
         // Nested dedup: if parent is also em/i, just pass through.
         if dom::parent_tag_is(element, "em") || dom::parent_tag_is(element, "i") {
             return Action::Replace(content.to_owned());

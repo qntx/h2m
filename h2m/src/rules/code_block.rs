@@ -18,7 +18,7 @@ impl Rule for CodeBlock {
         &["pre"]
     }
 
-    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
+    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context<'_>) -> Action {
         match ctx.options().code_block_style() {
             CodeBlockStyle::Fenced => Self::fenced(content, element, ctx),
             CodeBlockStyle::Indented => Self::indented(content),
@@ -28,7 +28,7 @@ impl Rule for CodeBlock {
 
 impl CodeBlock {
     /// Renders a fenced code block.
-    fn fenced(content: &str, element: &ElementRef<'_>, ctx: &Context) -> Action {
+    fn fenced(content: &str, element: &ElementRef<'_>, ctx: &Context<'_>) -> Action {
         let language = detect_language(element);
         let fence_char = ctx.options().fence().char();
 

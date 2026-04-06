@@ -31,7 +31,7 @@ pub fn escape_markdown(text: &str, mode: EscapeMode) -> Cow<'_, str> {
         if MARKDOWN_SPECIAL.contains(&c) {
             result.push('\\');
             result.push(c);
-        } else if i == 0 || text.as_bytes().get(i.wrapping_sub(1)) == Some(&b'\n') {
+        } else if i == 0 || i.checked_sub(1).and_then(|j| text.as_bytes().get(j)) == Some(&b'\n') {
             // Check for line-start patterns that could be interpreted as
             // markdown structure.
             let consumed = write_escaped_line_start(&text[i..], &mut result);

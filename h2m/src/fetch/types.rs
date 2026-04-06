@@ -20,22 +20,22 @@ pub enum ContentExtraction {
 #[derive(Debug, Clone)]
 pub struct ConvertConfig {
     /// Pre-built converter, cached to avoid per-call rebuilds.
-    pub converter: Converter,
+    pub(super) converter: Converter,
     /// Extract links.
-    pub extract_links: bool,
+    pub(super) extract_links: bool,
     /// Base domain for resolving relative URLs.
-    pub domain: Option<String>,
+    pub(super) domain: Option<String>,
     /// Content extraction strategy.
-    pub content: ContentExtraction,
+    pub(super) content: ContentExtraction,
 }
 
 /// HTTP response metadata returned alongside the HTML body.
 #[derive(Debug, Clone, Default)]
 pub struct ResponseMeta {
     /// HTTP status code.
-    pub status_code: Option<u16>,
+    pub(super) status_code: Option<u16>,
     /// `Content-Type` header value.
-    pub content_type: Option<String>,
+    pub(super) content_type: Option<String>,
 }
 
 /// Successful conversion result with metadata.

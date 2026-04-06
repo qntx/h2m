@@ -17,7 +17,7 @@ impl Rule for Paragraph {
         ]
     }
 
-    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &mut Context) -> Action {
+    fn apply(&self, content: &str, _element: &ElementRef<'_>, _ctx: &mut Context<'_>) -> Action {
         let trimmed = content.trim();
         if trimmed.is_empty() {
             return Action::Skip;

@@ -191,7 +191,7 @@ pub enum LinkReferenceStyle {
 ///     .with_heading_style(h2m::HeadingStyle::Setext)
 ///     .with_bullet_marker(h2m::BulletMarker::Asterisk);
 /// ```
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Options {
     /// Heading rendering style.

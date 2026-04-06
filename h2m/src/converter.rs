@@ -43,7 +43,7 @@ pub trait Rule: Send + Sync {
     /// * `element` - The HTML element being converted.
     /// * `ctx` - The current conversion context with options and mutable state
     ///   (e.g. for accumulating reference-style link definitions).
-    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action;
+    fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context<'_>) -> Action;
 }
 
 /// A plugin that registers rules and hooks with a converter.
@@ -244,7 +244,7 @@ impl Converter {
     #[must_use]
     pub fn convert(&self, html: &str) -> String {
         let document = Html::parse_document(html);
-        let mut ctx = Context::new(self.options, self.domain.clone());
+        let mut ctx = Context::new(self.options, self.domain.as_deref());
 
         // Pre-pass: compute list metadata.
         ctx.annotate_lists(document.root_element().id(), &document);
@@ -275,7 +275,13 @@ impl Converter {
     }
 
     /// Writes a DOM node's markdown representation into `buf`.
-    fn write_node(&self, node_id: NodeId, document: &Html, ctx: &mut Context, buf: &mut String) {
+    fn write_node(
+        &self,
+        node_id: NodeId,
+        document: &Html,
+        ctx: &mut Context<'_>,
+        buf: &mut String,
+    ) {
         let Some(node_ref) = document.tree.get(node_id) else {
             return;
         };
@@ -297,7 +303,7 @@ impl Converter {
     }
 
     /// Writes a text node's content into `buf`.
-    fn write_text(text: &scraper::node::Text, ctx: &Context, buf: &mut String) {
+    fn write_text(text: &scraper::node::Text, ctx: &Context<'_>, buf: &mut String) {
         let raw: &str = text;
 
         if ctx.in_pre() {
@@ -316,7 +322,7 @@ impl Converter {
         &self,
         element: &ElementRef<'_>,
         document: &Html,
-        ctx: &mut Context,
+        ctx: &mut Context<'_>,
         buf: &mut String,
     ) {
         let tag = element.value().name();

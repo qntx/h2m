@@ -242,12 +242,12 @@ use h2m::{Converter, Rule, Action, Context};
 use h2m::rules::CommonMark;
 use scraper::ElementRef;
 
+#[derive(Debug)]
 struct HighlightRule;
-
 impl Rule for HighlightRule {
     fn tags(&self) -> &'static [&'static str] { &["mark"] }
 
-    fn apply(&self, content: &str, _el: &ElementRef<'_>, _ctx: &mut Context) -> Action {
+    fn apply(&self, content: &str, _el: &ElementRef<'_>, _ctx: &mut Context<'_>) -> Action {
         Action::Replace(format!("=={content}=="))
     }
 }
