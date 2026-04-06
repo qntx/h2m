@@ -14,7 +14,7 @@ name = "h2m"
 path = "src/main.rs"
 
 [dependencies]
-h2m = { workspace = true, features = ["fetch"] }
+h2m = { workspace = true, features = ["scrape"] }
 clap.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

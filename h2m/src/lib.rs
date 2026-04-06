@@ -44,8 +44,8 @@ pub mod html;
 pub mod plugins;
 pub mod rules;
 
-#[cfg(feature = "fetch")]
-pub mod fetch;
+#[cfg(feature = "scrape")]
+pub mod scrape;
 
 pub mod converter;
 pub mod options;

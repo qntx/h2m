@@ -1,21 +1,21 @@
-//! Async HTTP fetching and batch conversion pipeline.
+//! Async HTTP scraping and conversion pipeline.
 //!
-//! Enabled with the `fetch` [Cargo feature](https://doc.rust-lang.org/cargo/reference/features.html).
+//! Enabled with the `scrape` [Cargo feature](https://doc.rust-lang.org/cargo/reference/features.html).
 //!
 //! # Examples
 //!
 //! ```no_run
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! use h2m::fetch::Fetcher;
+//! use h2m::scrape::Scraper;
 //!
-//! let fetcher = Fetcher::builder().concurrency(4).build()?;
-//! let result = fetcher.fetch("https://example.com").await?;
+//! let scraper = Scraper::builder().concurrency(4).build()?;
+//! let result = scraper.scrape("https://example.com").await?;
 //! println!("{}", result.markdown);
 //! # Ok(())
 //! # }
 //! ```
 
-mod client;
+mod http;
 mod pipeline;
 mod types;
 
@@ -23,9 +23,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::sync::Semaphore;
-pub(crate) use types::{ContentExtraction, ConvertConfig, ResponseMeta};
+pub(crate) use types::ContentExtraction;
+use types::ConvertConfig;
 #[allow(clippy::module_name_repetitions)]
-pub use types::{FetchError, FetchResult};
+pub use types::{Metadata, ScrapeError, ScrapeResult};
 
 use crate::converter::Converter;
 use crate::options::Options;
@@ -35,9 +36,9 @@ use crate::rules::CommonMark;
 /// Default User-Agent header value.
 const DEFAULT_USER_AGENT: &str = concat!("h2m/", env!("CARGO_PKG_VERSION"));
 
-/// Builder for configuring a [`Fetcher`].
+/// Builder for configuring a [`Scraper`].
 #[derive(Debug)]
-pub struct FetcherBuilder {
+pub struct ScraperBuilder {
     /// Converter options.
     options: Options,
     /// Enable GFM extensions.
@@ -58,7 +59,7 @@ pub struct FetcherBuilder {
     user_agent: String,
 }
 
-impl Default for FetcherBuilder {
+impl Default for ScraperBuilder {
     fn default() -> Self {
         Self {
             options: Options::default(),
@@ -74,7 +75,7 @@ impl Default for FetcherBuilder {
     }
 }
 
-impl FetcherBuilder {
+impl ScraperBuilder {
     /// Sets the converter options.
     #[must_use]
     pub const fn options(mut self, options: Options) -> Self {
@@ -107,9 +108,6 @@ impl FetcherBuilder {
 
     /// Enables smart readable content extraction.
     ///
-    /// Phase 1: tries semantic selectors (`article`, `main`, `[role="main"]`, …).
-    /// Phase 2: strips noise elements (`nav`, `footer`, `aside`, …) if no
-    /// semantic wrapper is found.
     /// Mutually exclusive with [`selector`](Self::selector).
     #[must_use]
     pub fn readable(mut self, enable: bool) -> Self {
@@ -156,19 +154,17 @@ impl FetcherBuilder {
         self
     }
 
-    /// Builds the [`Fetcher`].
+    /// Builds the [`Scraper`].
     ///
     /// # Errors
     ///
-    /// Returns `FetchError` if the HTTP client cannot be constructed.
-    pub fn build(self) -> Result<Fetcher, FetchError> {
+    /// Returns [`ScrapeError`] if the HTTP client cannot be constructed.
+    pub fn build(self) -> Result<Scraper, ScrapeError> {
         let client = reqwest::Client::builder()
             .user_agent(&self.user_agent)
             .timeout(self.timeout)
             .build()
-            .map_err(|e| FetchError::ClientBuild {
-                message: e.to_string(),
-            })?;
+            .map_err(|e| ScrapeError::new(format!("failed to build HTTP client: {e}"), None))?;
 
         let mut builder = Converter::builder()
             .options(self.options)
@@ -183,11 +179,10 @@ impl FetcherBuilder {
         let config = ConvertConfig {
             converter: builder.build(),
             extract_links: self.extract_links,
-            domain: self.domain,
             content: self.content,
         };
 
-        Ok(Fetcher {
+        Ok(Scraper {
             client,
             config,
             concurrency: self.concurrency.max(1),
@@ -196,14 +191,14 @@ impl FetcherBuilder {
     }
 }
 
-/// Async HTTP fetcher with integrated HTML-to-Markdown conversion.
+/// Async HTTP scraper with integrated HTML-to-Markdown conversion.
 ///
-/// Created via [`Fetcher::builder()`].
+/// Created via [`Scraper::builder()`].
 #[derive(Debug)]
-pub struct Fetcher {
+pub struct Scraper {
     /// HTTP client.
     client: reqwest::Client,
-    /// Pre-built conversion config (contains cached `Converter`).
+    /// Pre-built conversion config.
     config: ConvertConfig,
     /// Max concurrency.
     concurrency: usize,
@@ -211,39 +206,33 @@ pub struct Fetcher {
     delay: Duration,
 }
 
-impl Fetcher {
-    /// Creates a new [`FetcherBuilder`] with default settings.
+impl Scraper {
+    /// Creates a new [`ScraperBuilder`] with default settings.
     #[must_use]
-    pub fn builder() -> FetcherBuilder {
-        FetcherBuilder::default()
+    pub fn builder() -> ScraperBuilder {
+        ScraperBuilder::default()
     }
 
-    /// Fetches a single URL and converts it to Markdown.
+    /// Scrapes a single URL and converts it to Markdown.
     ///
     /// # Errors
     ///
-    /// Returns `FetchError` if the HTTP request fails or the response body
+    /// Returns [`ScrapeError`] if the HTTP request fails or the response body
     /// cannot be decoded.
-    pub async fn fetch(&self, url: &str) -> Result<FetchResult, FetchError> {
+    pub async fn scrape(&self, url: &str) -> Result<ScrapeResult, ScrapeError> {
         let start = Instant::now();
-        let (raw_html, meta) = client::fetch_html_inner(&self.client, url).await?;
-        Ok(pipeline::convert_to_result(
-            Some(url),
-            &raw_html,
-            start,
-            &self.config,
-            &meta,
-        ))
+        let response = http::fetch_html(&self.client, url).await?;
+        Ok(pipeline::build_result(url, &response, start, &self.config))
     }
 
-    /// Fetches and converts multiple URLs concurrently.
+    /// Scrapes and converts multiple URLs concurrently.
     ///
-    /// Results are returned as they complete (unordered). Each result is
+    /// Results are returned in completion order (unordered). Each result is
     /// independent — a failure for one URL does not affect others.
-    pub async fn fetch_many<S: AsRef<str> + Sync>(
+    pub async fn scrape_many<S: AsRef<str> + Sync>(
         &self,
         urls: &[S],
-    ) -> Vec<Result<FetchResult, FetchError>> {
+    ) -> Vec<Result<ScrapeResult, ScrapeError>> {
         let sem = Arc::new(Semaphore::new(self.concurrency));
         let cfg = Arc::new(self.config.clone());
         let mut handles = Vec::with_capacity(urls.len());
@@ -263,14 +252,9 @@ impl Fetcher {
             handles.push(tokio::spawn(async move {
                 let _permit = permit;
                 let start = Instant::now();
-
-                let (raw_html, meta) = client::fetch_html_inner(&cli, &owned_url).await?;
-                Ok(pipeline::convert_to_result(
-                    Some(&owned_url),
-                    &raw_html,
-                    start,
-                    &cfg_task,
-                    &meta,
+                let response = http::fetch_html(&cli, &owned_url).await?;
+                Ok(pipeline::build_result(
+                    &owned_url, &response, start, &cfg_task,
                 ))
             }));
         }
@@ -279,24 +263,23 @@ impl Fetcher {
         for handle in handles {
             match handle.await {
                 Ok(result) => results.push(result),
-                Err(e) => results.push(Err(FetchError::TaskPanicked {
-                    message: e.to_string(),
-                })),
+                Err(e) => results.push(Err(ScrapeError::new(format!("task panicked: {e}"), None))),
             }
         }
         results
     }
 
-    /// Fetches and converts multiple URLs, calling `on_result` for each
-    /// completed item. This enables streaming/NDJSON output.
-    pub async fn fetch_many_streaming<S, F>(&self, urls: &[S], mut on_result: F)
+    /// Scrapes multiple URLs, calling `on_result` for each completed item.
+    ///
+    /// This enables streaming/NDJSON output without buffering all results.
+    pub async fn scrape_many_streaming<S, F>(&self, urls: &[S], mut on_result: F)
     where
         S: AsRef<str> + Sync,
-        F: FnMut(Result<FetchResult, FetchError>),
+        F: FnMut(Result<ScrapeResult, ScrapeError>),
     {
         let sem = Arc::new(Semaphore::new(self.concurrency));
         let (tx, mut rx) =
-            tokio::sync::mpsc::channel::<Result<FetchResult, FetchError>>(self.concurrency * 2);
+            tokio::sync::mpsc::channel::<Result<ScrapeResult, ScrapeError>>(self.concurrency * 2);
 
         let urls_owned: Vec<String> = urls.iter().map(|s| s.as_ref().to_owned()).collect();
         let client = self.client.clone();
@@ -320,20 +303,9 @@ impl Fetcher {
                 tokio::spawn(async move {
                     let _permit = permit;
                     let start = Instant::now();
-
-                    let result =
-                        client::fetch_html_inner(&cli, &owned_url)
-                            .await
-                            .map(|(raw_html, meta)| {
-                                pipeline::convert_to_result(
-                                    Some(&owned_url),
-                                    &raw_html,
-                                    start,
-                                    &cfg_task,
-                                    &meta,
-                                )
-                            });
-
+                    let result = http::fetch_html(&cli, &owned_url).await.map(|response| {
+                        pipeline::build_result(&owned_url, &response, start, &cfg_task)
+                    });
                     let _ = tx_c.send(result).await;
                 });
             }
@@ -344,20 +316,5 @@ impl Fetcher {
         }
 
         let _ = producer.await;
-    }
-
-    /// Converts already-fetched HTML into a `FetchResult`.
-    ///
-    /// Useful when you have HTML from a non-HTTP source (file, stdin).
-    #[must_use]
-    pub fn convert_html(&self, raw_html: &str) -> FetchResult {
-        let start = Instant::now();
-        pipeline::convert_to_result(
-            None,
-            raw_html,
-            start,
-            &self.config,
-            &ResponseMeta::default(),
-        )
     }
 }

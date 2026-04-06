@@ -3,13 +3,13 @@
 use std::fs;
 use std::io::{self, Write};
 
-use h2m::fetch::{FetchError, FetchResult};
+use h2m::scrape::{ScrapeError, ScrapeResult};
 
 use crate::cli::Cli;
 
-/// Emits a single `FetchResult` to stdout (JSON pretty-printed or plain
+/// Emits a single `ScrapeResult` to stdout (JSON pretty-printed or plain
 /// Markdown).
-pub fn emit_single(cli: &Cli, result: &FetchResult) {
+pub fn emit_single(cli: &Cli, result: &ScrapeResult) {
     if cli.json {
         write_json_pretty(result);
     } else {
@@ -31,7 +31,7 @@ pub fn emit_single_markdown(cli: &Cli, md: &str) {
 }
 
 /// Emits a streaming NDJSON line for batch results.
-pub fn emit_ndjson(result: &Result<FetchResult, FetchError>) {
+pub fn emit_ndjson(result: &Result<ScrapeResult, ScrapeError>) {
     let line = match result {
         Ok(r) => serde_json::to_string(r),
         Err(e) => serde_json::to_string(e),
@@ -42,7 +42,7 @@ pub fn emit_ndjson(result: &Result<FetchResult, FetchError>) {
 }
 
 /// Emits a batch result line (plain text mode).
-pub fn emit_batch_plain(result: &Result<FetchResult, FetchError>) {
+pub fn emit_batch_plain(result: &Result<ScrapeResult, ScrapeError>) {
     match result {
         Ok(r) => write_stdout_line(&r.markdown),
         Err(e) => eprintln!("error: {e}"),
@@ -51,7 +51,7 @@ pub fn emit_batch_plain(result: &Result<FetchResult, FetchError>) {
 
 /// Prints a JSON error object to stdout.
 pub fn emit_json_error(msg: &str, url: Option<&str>) {
-    let e = FetchError::new(msg, url.map(str::to_owned));
+    let e = ScrapeError::new(msg, url.map(str::to_owned));
     write_json_pretty(&e);
 }
 

@@ -11,7 +11,7 @@ readme.workspace = true
 
 [features]
 default = []
-fetch = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio"]
+scrape = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio"]
 
 [dependencies]
 scraper.workspace = true

@@ -51,7 +51,7 @@ pub fn extract_links_with_base(html: &str, base_url: &str) -> Vec<String> {
 }
 
 /// Extracts `<title>` text from a pre-parsed document.
-pub fn extract_title_doc(doc: &Html) -> Option<String> {
+fn extract_title_doc(doc: &Html) -> Option<String> {
     let sel = scraper::Selector::parse("title").ok()?;
     doc.select(&sel)
         .next()
@@ -74,7 +74,7 @@ pub fn extract_links_doc(doc: &Html, base: Option<&url::Url>) -> Vec<String> {
 }
 
 /// Extracts the `lang` attribute from the `<html>` element.
-pub fn extract_language_doc(doc: &Html) -> Option<String> {
+fn extract_language_doc(doc: &Html) -> Option<String> {
     let sel = scraper::Selector::parse("html").ok()?;
     doc.select(&sel)
         .next()
@@ -84,12 +84,12 @@ pub fn extract_language_doc(doc: &Html) -> Option<String> {
 }
 
 /// Extracts the `<meta name="description">` content.
-pub fn extract_description_doc(doc: &Html) -> Option<String> {
+fn extract_description_doc(doc: &Html) -> Option<String> {
     extract_meta_attr(doc, r#"meta[name="description"]"#, "content")
 }
 
 /// Extracts the Open Graph image URL (`<meta property="og:image">`).
-pub fn extract_og_image_doc(doc: &Html) -> Option<String> {
+fn extract_og_image_doc(doc: &Html) -> Option<String> {
     extract_meta_attr(doc, r#"meta[property="og:image"]"#, "content")
 }
 
@@ -102,6 +102,32 @@ fn extract_meta_attr(doc: &Html, selector: &str, attr: &str) -> Option<String> {
         .and_then(|el| el.value().attr(attr))
         .map(|s| s.trim().to_owned())
         .filter(|s| !s.is_empty())
+}
+
+/// Aggregated page metadata extracted from a parsed HTML document.
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
+pub struct PageMeta {
+    /// Page `<title>` text.
+    pub title: Option<String>,
+    /// `<meta name="description">` content.
+    pub description: Option<String>,
+    /// `<html lang="…">` attribute.
+    pub language: Option<String>,
+    /// `<meta property="og:image">` URL.
+    pub og_image: Option<String>,
+}
+
+impl PageMeta {
+    /// Extracts all available metadata from a pre-parsed document.
+    pub(crate) fn from_doc(doc: &Html) -> Self {
+        Self {
+            title: extract_title_doc(doc),
+            description: extract_description_doc(doc),
+            language: extract_language_doc(doc),
+            og_image: extract_og_image_doc(doc),
+        }
+    }
 }
 
 /// Resolves a single href against an optional base URL.

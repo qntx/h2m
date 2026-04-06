@@ -5,15 +5,15 @@ use std::io::{self, Read};
 use std::time::Duration;
 
 use h2m::Converter;
-use h2m::fetch::Fetcher;
+use h2m::scrape::Scraper;
 
 use crate::cli::{self, Cli};
 use crate::error::CliError;
 use crate::output;
 
-/// Builds a [`Fetcher`] from CLI arguments.
-fn build_fetcher(cli: &Cli) -> Result<Fetcher, CliError> {
-    let mut builder = Fetcher::builder()
+/// Builds a [`Scraper`] from CLI arguments.
+fn build_scraper(cli: &Cli) -> Result<Scraper, CliError> {
+    let mut builder = Scraper::builder()
         .options(cli::build_options(cli))
         .gfm(cli.gfm)
         .extract_links(cli.extract_links)
@@ -65,13 +65,13 @@ pub async fn run(cli: &Cli) -> Result<(), CliError> {
         return Ok(());
     }
 
-    let fetcher = build_fetcher(cli)?;
+    let scraper = build_scraper(cli)?;
 
     if inputs.len() == 1 {
-        let result = fetcher.fetch(&inputs[0]).await?;
+        let result = scraper.scrape(&inputs[0]).await?;
         output::emit_single(cli, &result);
     } else {
-        run_batch(cli, &fetcher, &inputs).await;
+        run_batch(cli, &scraper, &inputs).await;
     }
 
     Ok(())
@@ -126,16 +126,16 @@ fn run_stdin(cli: &Cli) -> Result<(), CliError> {
 }
 
 /// Batch-converts multiple URLs with streaming output.
-async fn run_batch(cli: &Cli, fetcher: &Fetcher, inputs: &[String]) {
+async fn run_batch(cli: &Cli, scraper: &Scraper, inputs: &[String]) {
     if cli.json {
-        fetcher
-            .fetch_many_streaming(inputs, |result| {
+        scraper
+            .scrape_many_streaming(inputs, |result| {
                 output::emit_ndjson(&result);
             })
             .await;
     } else {
-        fetcher
-            .fetch_many_streaming(inputs, |result| {
+        scraper
+            .scrape_many_streaming(inputs, |result| {
                 output::emit_batch_plain(&result);
             })
             .await;

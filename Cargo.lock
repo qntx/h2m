@@ -401,7 +401,7 @@ dependencies = [
 
 [[package]]
 name = "h2m"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
  "ego-tree",
  "pretty_assertions",
@@ -416,7 +416,7 @@ dependencies = [
 
 [[package]]
 name = "h2m-cli"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
  "clap",
  "h2m",

@@ -13,11 +13,8 @@ mod extract;
 mod readable;
 pub(crate) mod select;
 
-pub(crate) use extract::{
-    extract_description_doc, extract_language_doc, extract_links_doc, extract_og_image_doc,
-    extract_title_doc,
-};
-pub use extract::{extract_links, extract_links_with_base, extract_title};
+pub(crate) use extract::extract_links_doc;
+pub use extract::{PageMeta, extract_links, extract_links_with_base, extract_title};
 pub(crate) use readable::readable_content_doc;
 pub use readable::{detect_main_content, readable_content, strip_noise};
 pub use select::select;
