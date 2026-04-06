@@ -65,7 +65,7 @@ impl Rule for Link {
 
         let title_part = title.map_or_else(String::new, |t| format!(" \"{t}\""));
 
-        let md = match ctx.options().get_link_style() {
+        let md = match ctx.options().link_style() {
             LinkStyle::Inlined => {
                 format!("[{display}]({absolute_href}{title_part})")
             }
@@ -80,7 +80,7 @@ impl Rule for Link {
 
 /// Builds a reference-style link and pushes the definition into `ctx`.
 fn build_reference_link(display: &str, href: &str, title_part: &str, ctx: &mut Context) -> String {
-    match ctx.options().get_link_reference_style() {
+    match ctx.options().link_reference_style() {
         LinkReferenceStyle::Full => {
             let idx = ctx.link_index + 1;
             ctx.push_reference(format!("[{idx}]: {href}{title_part}"));

@@ -13,7 +13,7 @@ fn emphasis_default_asterisk() {
 
 #[test]
 fn emphasis_underscore_option() {
-    let opts = Options::default().em_delimiter(h2m::EmDelimiter::Underscore);
+    let opts = Options::default().with_em_delimiter(h2m::EmDelimiter::Underscore);
     assert_eq!(
         with_options(opts).convert("<p><em>italic</em></p>"),
         "_italic_"
@@ -27,7 +27,7 @@ fn strong_default_double_asterisks() {
 
 #[test]
 fn strong_underscores_option() {
-    let opts = Options::default().strong_delimiter(h2m::StrongDelimiter::Underscores);
+    let opts = Options::default().with_strong_delimiter(h2m::StrongDelimiter::Underscores);
     assert_eq!(
         with_options(opts).convert("<p><strong>bold</strong></p>"),
         "__bold__"

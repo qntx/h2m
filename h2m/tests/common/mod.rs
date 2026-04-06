@@ -20,7 +20,7 @@ pub fn with_domain(domain: &str) -> Converter {
 
 pub fn ref_converter(style: h2m::LinkReferenceStyle) -> Converter {
     let opts = Options::default()
-        .link_style(h2m::LinkStyle::Referenced)
-        .link_reference_style(style);
+        .with_link_style(h2m::LinkStyle::Referenced)
+        .with_link_reference_style(style);
     with_options(opts)
 }

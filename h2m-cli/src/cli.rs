@@ -263,17 +263,17 @@ impl From<StrongStyle> for h2m::StrongDelimiter {
 /// Builds `h2m::Options` from CLI arguments.
 pub fn build_options(cli: &Cli) -> h2m::Options {
     let mut opts = h2m::Options::default()
-        .heading_style(cli.heading_style.into())
-        .bullet_marker(cli.bullet.into())
-        .fence(cli.fence.into())
-        .em_delimiter(cli.em.into())
-        .strong_delimiter(cli.strong.into())
-        .horizontal_rule(cli.hr.into())
-        .link_style(cli.link_style.into())
-        .link_reference_style(cli.link_ref.into());
+        .with_heading_style(cli.heading_style.into())
+        .with_bullet_marker(cli.bullet.into())
+        .with_fence(cli.fence.into())
+        .with_em_delimiter(cli.em.into())
+        .with_strong_delimiter(cli.strong.into())
+        .with_horizontal_rule(cli.hr.into())
+        .with_link_style(cli.link_style.into())
+        .with_link_reference_style(cli.link_ref.into());
 
     if cli.no_escape {
-        opts = opts.escape_mode(h2m::EscapeMode::Disabled);
+        opts = opts.with_escape_mode(h2m::EscapeMode::Disabled);
     }
 
     opts

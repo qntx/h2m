@@ -306,7 +306,7 @@ impl Converter {
         }
 
         let collapsed = whitespace::collapse_whitespace(raw);
-        let escaped = escape::escape_markdown(&collapsed, ctx.options().get_escape_mode());
+        let escaped = escape::escape_markdown(&collapsed, ctx.options().escape_mode());
         buf.push_str(&escaped);
     }
 

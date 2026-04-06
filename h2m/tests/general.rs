@@ -16,7 +16,7 @@ fn hr_default_dashes() {
 
 #[test]
 fn hr_asterisks_option() {
-    let opts = Options::default().horizontal_rule(h2m::HorizontalRule::Asterisks);
+    let opts = Options::default().with_horizontal_rule(h2m::HorizontalRule::Asterisks);
     assert_eq!(
         with_options(opts).convert("<p>before</p><hr/><p>after</p>"),
         "before\n\n***\n\nafter"
@@ -25,7 +25,7 @@ fn hr_asterisks_option() {
 
 #[test]
 fn hr_underscores_option() {
-    let opts = Options::default().horizontal_rule(h2m::HorizontalRule::Underscores);
+    let opts = Options::default().with_horizontal_rule(h2m::HorizontalRule::Underscores);
     assert_eq!(
         with_options(opts).convert("<p>before</p><hr/><p>after</p>"),
         "before\n\n___\n\nafter"
@@ -78,7 +78,7 @@ fn html_entities_decoded_and_special_chars_escaped() {
 
 #[test]
 fn escape_mode_disabled() {
-    let opts = Options::default().escape_mode(h2m::EscapeMode::Disabled);
+    let opts = Options::default().with_escape_mode(h2m::EscapeMode::Disabled);
     let md = with_options(opts).convert("<p>*not bold* and [not link]</p>");
     assert_eq!(md, "*not bold* and [not link]");
 }

@@ -193,7 +193,7 @@ impl Context {
                         let num = start + item_index;
                         format!("{num:>number_width$}. ")
                     } else {
-                        format!("{} ", ctx.options.get_bullet_marker().char())
+                        format!("{} ", ctx.options.bullet_marker().char())
                     };
                     let prefix_width = prefix.len();
 

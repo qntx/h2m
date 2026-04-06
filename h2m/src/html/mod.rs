@@ -5,9 +5,9 @@
 //!
 //! The module is organized into three sub-modules:
 //!
-//! - [`extract`] — metadata extraction (title, links, language, description)
-//! - [`select`] — CSS selector application
-//! - [`readable`] — smart content extraction and noise stripping
+//! - **extract** — metadata extraction (title, links, language, description)
+//! - **select** — CSS selector application
+//! - **readable** — smart content extraction and noise stripping
 
 mod extract;
 mod readable;

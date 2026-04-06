@@ -19,7 +19,7 @@ impl Rule for CodeBlock {
     }
 
     fn apply(&self, content: &str, element: &ElementRef<'_>, ctx: &mut Context) -> Action {
-        match ctx.options().get_code_block_style() {
+        match ctx.options().code_block_style() {
             CodeBlockStyle::Fenced => Self::fenced(content, element, ctx),
             CodeBlockStyle::Indented => Self::indented(content),
         }
@@ -30,7 +30,7 @@ impl CodeBlock {
     /// Renders a fenced code block.
     fn fenced(content: &str, element: &ElementRef<'_>, ctx: &Context) -> Action {
         let language = detect_language(element);
-        let fence_char = ctx.options().get_fence().char();
+        let fence_char = ctx.options().fence().char();
 
         // Calculate fence length: must exceed longest consecutive run of the
         // fence character in the content.

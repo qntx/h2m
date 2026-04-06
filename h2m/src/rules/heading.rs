@@ -35,12 +35,12 @@ impl Rule for Heading {
 
         // If the heading is inside an <a> link, render as bold instead.
         if dom::has_ancestor(element, "a") {
-            let delim = ctx.options().get_strong_delimiter().as_str();
+            let delim = ctx.options().strong_delimiter().as_str();
             let text = format!("{delim}{trimmed}{delim}");
             return Action::Replace(dom::add_space_if_necessary(element, text));
         }
 
-        let md = match ctx.options().get_heading_style() {
+        let md = match ctx.options().heading_style() {
             HeadingStyle::Setext if level <= 2 => {
                 let underline_char = if level == 1 { '=' } else { '-' };
                 let underline =
