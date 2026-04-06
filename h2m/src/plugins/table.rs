@@ -1,11 +1,10 @@
 //! GFM table (`<table>`) conversion rules.
 
-use ego_tree::NodeRef;
 use scraper::ElementRef;
-use scraper::node::Node;
 
 use crate::context::Context;
 use crate::converter::{Action, Rule};
+use crate::dom;
 
 /// Handles `<table>` elements, rendering them as GFM pipe tables.
 #[derive(Debug, Clone, Copy)]
@@ -189,7 +188,7 @@ fn collect_cells(tr: &ElementRef<'_>) -> TableRow {
                     all_th = false;
                 }
                 let alignment = parse_alignment(el.attr("align"), el.attr("style"));
-                let text = collect_text_content(&child);
+                let text = dom::collect_text(&child);
                 cells.push(TableCell {
                     text: text.trim().replace('\n', " "),
                     alignment,
@@ -202,20 +201,6 @@ fn collect_cells(tr: &ElementRef<'_>) -> TableRow {
         is_header: in_thead || all_th,
         cells,
     }
-}
-
-/// Recursively collects raw text content from a DOM node.
-fn collect_text_content(node: &NodeRef<'_, Node>) -> String {
-    let mut text = String::new();
-    match node.value() {
-        Node::Text(t) => text.push_str(t),
-        _ => {
-            for child in node.children() {
-                text.push_str(&collect_text_content(&child));
-            }
-        }
-    }
-    text
 }
 
 /// Parses column alignment from an `align` attribute or `text-align` CSS style.

@@ -45,25 +45,25 @@ struct Cli {
     #[arg(long, value_enum, default_value_t = HeadingStyle::Atx)]
     heading_style: HeadingStyle,
 
-    /// Bullet character for unordered lists ('-', '+', or '*').
-    #[arg(long, default_value = "-")]
-    bullet: char,
+    /// Bullet character for unordered lists.
+    #[arg(long, value_enum, default_value_t = BulletStyle::Dash)]
+    bullet: BulletStyle,
 
     /// Fence style for code blocks.
     #[arg(long, value_enum, default_value_t = FenceStyle::Backtick)]
     fence: FenceStyle,
 
-    /// Emphasis delimiter ('*' or '_').
-    #[arg(long, default_value = "*")]
-    em: char,
+    /// Emphasis delimiter.
+    #[arg(long, value_enum, default_value_t = EmStyle::Star)]
+    em: EmStyle,
 
     /// Strong delimiter.
     #[arg(long, value_enum, default_value_t = StrongStyle::Stars)]
     strong: StrongStyle,
 
-    /// Horizontal rule string.
-    #[arg(long, default_value = "---")]
-    hr: String,
+    /// Horizontal rule style.
+    #[arg(long, value_enum, default_value_t = HrStyle::Dashes)]
+    hr: HrStyle,
 
     /// Link style.
     #[arg(long, value_enum, default_value_t = LinkStyleArg::Inlined)]
@@ -101,6 +101,17 @@ enum HeadingStyle {
     Setext,
 }
 
+/// Bullet character for unordered lists.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum BulletStyle {
+    /// Dash: `-`.
+    Dash,
+    /// Plus: `+`.
+    Plus,
+    /// Asterisk: `*`.
+    Star,
+}
+
 /// Code fence character style.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum FenceStyle {
@@ -108,6 +119,26 @@ enum FenceStyle {
     Backtick,
     /// Triple tilde fences.
     Tilde,
+}
+
+/// Emphasis delimiter style.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum EmStyle {
+    /// Asterisk: `*text*`.
+    Star,
+    /// Underscore: `_text_`.
+    Underscore,
+}
+
+/// Horizontal rule style.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum HrStyle {
+    /// Three dashes: `---`.
+    Dashes,
+    /// Three asterisks: `***`.
+    Stars,
+    /// Three underscores: `___`.
+    Underscores,
 }
 
 /// Link rendering style.
@@ -164,10 +195,7 @@ fn main() {
 
     let converter = builder.build();
 
-    let md = converter.convert(&html).unwrap_or_else(|e| {
-        eprintln!("error: conversion failed: {e}");
-        process::exit(1);
-    });
+    let md = converter.convert(&html);
 
     write_output(&cli, &md);
 }
@@ -251,36 +279,52 @@ fn apply_selector(cli: &Cli, html: &str) -> String {
 fn build_options(cli: &Cli) -> h2m::Options {
     let mut options = h2m::Options::default();
 
-    if matches!(cli.heading_style, HeadingStyle::Setext) {
-        options.heading_style = h2m::HeadingStyle::Setext;
-    }
+    options.heading_style = match cli.heading_style {
+        HeadingStyle::Atx => h2m::HeadingStyle::Atx,
+        HeadingStyle::Setext => h2m::HeadingStyle::Setext,
+    };
 
-    options.bullet_marker = cli.bullet;
+    options.bullet_marker = match cli.bullet {
+        BulletStyle::Dash => h2m::BulletMarker::Dash,
+        BulletStyle::Plus => h2m::BulletMarker::Plus,
+        BulletStyle::Star => h2m::BulletMarker::Asterisk,
+    };
 
-    if matches!(cli.fence, FenceStyle::Tilde) {
-        options.fence = h2m::Fence::Tilde;
-    }
+    options.fence = match cli.fence {
+        FenceStyle::Backtick => h2m::Fence::Backtick,
+        FenceStyle::Tilde => h2m::Fence::Tilde,
+    };
 
-    options.em_delimiter = cli.em;
+    options.em_delimiter = match cli.em {
+        EmStyle::Star => h2m::EmDelimiter::Asterisk,
+        EmStyle::Underscore => h2m::EmDelimiter::Underscore,
+    };
 
     options.strong_delimiter = match cli.strong {
-        StrongStyle::Stars => "**",
-        StrongStyle::Underscores => "__",
+        StrongStyle::Stars => h2m::StrongDelimiter::Asterisks,
+        StrongStyle::Underscores => h2m::StrongDelimiter::Underscores,
+    };
+
+    options.horizontal_rule = match cli.hr {
+        HrStyle::Dashes => h2m::HorizontalRule::Dashes,
+        HrStyle::Stars => h2m::HorizontalRule::Asterisks,
+        HrStyle::Underscores => h2m::HorizontalRule::Underscores,
     };
 
     if cli.no_escape {
         options.escape_mode = h2m::EscapeMode::Disabled;
     }
 
-    if matches!(cli.link_style, LinkStyleArg::Referenced) {
-        options.link_style = h2m::LinkStyle::Referenced;
-    }
+    options.link_style = match cli.link_style {
+        LinkStyleArg::Inlined => h2m::LinkStyle::Inlined,
+        LinkStyleArg::Referenced => h2m::LinkStyle::Referenced,
+    };
 
-    match cli.link_ref {
-        LinkRefArg::Full => options.link_reference_style = h2m::LinkReferenceStyle::Full,
-        LinkRefArg::Collapsed => options.link_reference_style = h2m::LinkReferenceStyle::Collapsed,
-        LinkRefArg::Shortcut => options.link_reference_style = h2m::LinkReferenceStyle::Shortcut,
-    }
+    options.link_reference_style = match cli.link_ref {
+        LinkRefArg::Full => h2m::LinkReferenceStyle::Full,
+        LinkRefArg::Collapsed => h2m::LinkReferenceStyle::Collapsed,
+        LinkRefArg::Shortcut => h2m::LinkReferenceStyle::Shortcut,
+    };
 
     options
 }

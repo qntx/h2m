@@ -24,7 +24,7 @@ impl Rule for Link {
             return Action::Replace(content.to_owned());
         }
 
-        let absolute_href = dom::resolve_url(ctx.domain(), href);
+        let absolute_href = ctx.resolve_url(href);
 
         // Multiline content: escape newlines so the link text stays on one
         // logical line.

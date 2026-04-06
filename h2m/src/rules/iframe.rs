@@ -33,7 +33,7 @@ impl Rule for Iframe {
             return Action::Replace(String::new());
         }
 
-        let absolute_url = dom::resolve_url(ctx.domain(), src);
+        let absolute_url = ctx.resolve_url(src);
         Action::Replace(format!("[iframe]({absolute_url})"))
     }
 }

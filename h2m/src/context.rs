@@ -1,5 +1,6 @@
 //! Conversion context tracking traversal state.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use ego_tree::NodeId;
@@ -86,6 +87,39 @@ impl Context {
         self.domain.as_deref()
     }
 
+    /// Resolves a potentially relative URL against the configured base domain.
+    ///
+    /// Returns the URL unchanged (as a borrow) when no resolution is needed.
+    #[must_use]
+    pub fn resolve_url<'a>(&self, raw_url: &'a str) -> Cow<'a, str> {
+        let Some(domain) = self.domain.as_deref() else {
+            return Cow::Borrowed(raw_url);
+        };
+
+        if domain.is_empty() {
+            return Cow::Borrowed(raw_url);
+        }
+
+        // Already a valid absolute URL — return as-is.
+        if url::Url::parse(raw_url).is_ok() {
+            return Cow::Borrowed(raw_url);
+        }
+
+        // Construct a base URL from the domain and resolve against it.
+        let base_str = if domain.contains("://") {
+            Cow::Borrowed(domain)
+        } else {
+            Cow::Owned(format!("http://{domain}"))
+        };
+
+        let Ok(base) = url::Url::parse(&base_str) else {
+            return Cow::Borrowed(raw_url);
+        };
+
+        base.join(raw_url)
+            .map_or(Cow::Borrowed(raw_url), |u| Cow::Owned(u.to_string()))
+    }
+
     /// Pushes a reference-style link definition and returns the next link
     /// index.
     pub fn push_reference(&mut self, reference: String) -> usize {
@@ -101,10 +135,14 @@ impl Context {
         !self.references.is_empty()
     }
 
-    /// Joins all accumulated reference definitions into a single string.
+    /// Takes all accumulated reference definitions, joining them into a single
+    /// string and clearing the internal buffer.
     #[must_use]
-    pub(crate) fn drain_references(&self) -> String {
-        self.references.join("\n")
+    pub(crate) fn take_references(&mut self) -> String {
+        let result = self.references.join("\n");
+        self.references.clear();
+        self.link_index = 0;
+        result
     }
 
     /// Pre-computes [`ListMetadata`] for every `<li>` element in the document.
@@ -161,7 +199,7 @@ impl Context {
                         let num = start + item_index;
                         format!("{num:>number_width$}. ")
                     } else {
-                        format!("{} ", options.bullet_marker)
+                        format!("{} ", options.bullet_marker.char())
                     };
                     let prefix_width = prefix.len();
 

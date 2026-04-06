@@ -26,7 +26,7 @@ impl Rule for Strong {
             return Action::Skip;
         }
 
-        let delim = ctx.options().strong_delimiter;
+        let delim = ctx.options().strong_delimiter.as_str();
         let wrapped = super::wrap_delimiter_per_line(trimmed, delim);
         Action::Replace(dom::add_space_if_necessary(element, wrapped))
     }

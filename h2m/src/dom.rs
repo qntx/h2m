@@ -75,40 +75,6 @@ fn collect_text_inner(node: &NodeRef<'_, Node>, buf: &mut String) {
     }
 }
 
-/// Resolves a potentially relative URL against a base domain using the `url`
-/// crate's WHATWG-compliant URL parser.
-///
-/// If `domain` is `None` or parsing fails, returns the URL unchanged.
-#[must_use]
-pub fn resolve_url(base_domain: Option<&str>, raw_url: &str) -> String {
-    let Some(domain) = base_domain else {
-        return raw_url.to_owned();
-    };
-
-    if domain.is_empty() {
-        return raw_url.to_owned();
-    }
-
-    // Already a valid absolute URL — return as-is.
-    if url::Url::parse(raw_url).is_ok() {
-        return raw_url.to_owned();
-    }
-
-    // Construct a base URL from the domain and resolve against it.
-    let base_str = if domain.contains("://") {
-        domain.to_owned()
-    } else {
-        format!("http://{domain}")
-    };
-
-    let Ok(base) = url::Url::parse(&base_str) else {
-        return raw_url.to_owned();
-    };
-
-    base.join(raw_url)
-        .map_or_else(|_| raw_url.to_owned(), |u| u.to_string())
-}
-
 /// Adds a leading/trailing space around `markdown` if the neighbouring DOM
 /// text would otherwise run into the delimiter without whitespace.
 ///

@@ -5,7 +5,7 @@
 //! ## Quick start
 //!
 //! ```
-//! let md = h2m::convert("<h1>Hello</h1><p>World</p>").unwrap();
+//! let md = h2m::convert("<h1>Hello</h1><p>World</p>");
 //! assert_eq!(md, "# Hello\n\nWorld");
 //! ```
 //!
@@ -20,7 +20,7 @@
 //!     .use_plugin(Gfm)
 //!     .build();
 //!
-//! let md = converter.convert("<del>old</del>").unwrap();
+//! let md = converter.convert("<del>old</del>");
 //! assert_eq!(md, "~~old~~");
 //! ```
 
@@ -38,7 +38,8 @@ mod whitespace;
 pub use context::Context;
 pub use converter::{Action, Converter, ConverterBuilder, Plugin, Rule};
 pub use options::{
-    CodeBlockStyle, EscapeMode, Fence, HeadingStyle, LinkReferenceStyle, LinkStyle, Options,
+    BulletMarker, CodeBlockStyle, EmDelimiter, EscapeMode, Fence, HeadingStyle, HorizontalRule,
+    LinkReferenceStyle, LinkStyle, Options, StrongDelimiter,
 };
 
 /// Errors that can occur during HTML-to-Markdown conversion.
@@ -64,22 +65,15 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///     .use_plugin(CommonMark)
 ///     .build();
 /// ```
-///
-/// # Errors
-///
-/// Returns an error if I/O fails. HTML parsing itself is infallible since
-/// html5ever recovers from malformed input.
-pub fn convert(html: &str) -> Result<String> {
+#[must_use]
+pub fn convert(html: &str) -> String {
     let converter = Converter::builder().use_plugin(rules::CommonMark).build();
     converter.convert(html)
 }
 
 /// Converts HTML to Markdown with GFM (GitHub Flavored Markdown) extensions.
-///
-/// # Errors
-///
-/// Returns an error if I/O fails.
-pub fn convert_gfm(html: &str) -> Result<String> {
+#[must_use]
+pub fn convert_gfm(html: &str) -> String {
     let converter = Converter::builder()
         .use_plugin(rules::CommonMark)
         .use_plugin(plugins::Gfm)

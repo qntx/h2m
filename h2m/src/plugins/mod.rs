@@ -24,7 +24,7 @@ use crate::converter::{ConverterBuilder, Plugin};
 ///     .use_plugin(Gfm)
 ///     .build();
 ///
-/// let md = converter.convert("<del>removed</del>").unwrap();
+/// let md = converter.convert("<del>removed</del>");
 /// assert_eq!(md, "~~removed~~");
 /// ```
 #[derive(Debug, Clone, Copy)]

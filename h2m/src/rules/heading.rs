@@ -35,7 +35,7 @@ impl Rule for Heading {
 
         // If the heading is inside an <a> link, render as bold instead.
         if dom::has_ancestor(element, "a") {
-            let delim = ctx.options().strong_delimiter;
+            let delim = ctx.options().strong_delimiter.as_str();
             let text = format!("{delim}{trimmed}{delim}");
             return Action::Replace(dom::add_space_if_necessary(element, text));
         }

@@ -64,7 +64,7 @@ pub trait Rule: Send + Sync {
 ///     .use_plugin(Gfm)
 ///     .build();
 ///
-/// let md = converter.convert("<table><tr><th>A</th></tr></table>").unwrap();
+/// let md = converter.convert("<table><tr><th>A</th></tr></table>");
 /// assert!(md.contains("| A"));
 /// ```
 pub trait Plugin {
@@ -192,7 +192,7 @@ impl ConverterBuilder {
 ///     .domain("example.com")
 ///     .build();
 ///
-/// let md = converter.convert("<p><a href=\"/about\">About</a></p>").unwrap();
+/// let md = converter.convert("<p><a href=\"/about\">About</a></p>");
 /// assert_eq!(md, "[About](http://example.com/about)");
 /// ```
 pub struct Converter {
@@ -238,12 +238,10 @@ impl Converter {
 
     /// Converts an HTML string to Markdown.
     ///
-    /// # Errors
-    ///
-    /// Returns an error if I/O fails during reading (when using reader-based
-    /// APIs). Direct string conversion is infallible at the parsing level since
-    /// html5ever recovers from malformed HTML.
-    pub fn convert(&self, html: &str) -> crate::Result<String> {
+    /// This operation is infallible: html5ever recovers from any malformed
+    /// input, so parsing never fails.
+    #[must_use]
+    pub fn convert(&self, html: &str) -> String {
         let document = Html::parse_document(html);
         let mut ctx = Context::new(self.options, self.domain.clone());
 
@@ -257,10 +255,10 @@ impl Converter {
         // Append reference-style link definitions if any.
         if ctx.has_references() {
             output.push_str("\n\n");
-            output.push_str(&ctx.drain_references());
+            output.push_str(&ctx.take_references());
         }
 
-        Ok(whitespace::clean_output(&output))
+        whitespace::clean_output(&output)
     }
 
     /// Converts HTML read from a reader to Markdown.
@@ -271,7 +269,7 @@ impl Converter {
     pub fn convert_reader(&self, mut reader: impl std::io::Read) -> crate::Result<String> {
         let mut html = String::new();
         reader.read_to_string(&mut html)?;
-        self.convert(&html)
+        Ok(self.convert(&html))
     }
 
     /// Processes a DOM node and returns its markdown representation.

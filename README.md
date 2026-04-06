@@ -34,13 +34,13 @@ H2M converts HTML into clean Markdown with full CommonMark compliance and GitHub
 **Shell** (macOS / Linux):
 
 ```sh
-curl -fsSL https://sh.qntx.fun/h2m | sh
+curl -fsSL https://sh.qntx.fun/labs/h2m | sh
 ```
 
 **PowerShell** (Windows):
 
 ```powershell
-irm https://sh.qntx.fun/h2m/ps | iex
+irm https://sh.qntx.fun/labs/h2m/ps | iex
 ```
 
 Or via Cargo:

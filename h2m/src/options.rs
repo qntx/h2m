@@ -46,6 +46,104 @@ impl Fence {
     }
 }
 
+/// Bullet character for unordered lists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum BulletMarker {
+    /// Dash: `-`.
+    #[default]
+    Dash,
+    /// Plus: `+`.
+    Plus,
+    /// Asterisk: `*`.
+    Asterisk,
+}
+
+impl BulletMarker {
+    /// Returns the bullet character.
+    #[must_use]
+    #[inline]
+    pub const fn char(self) -> char {
+        match self {
+            Self::Dash => '-',
+            Self::Plus => '+',
+            Self::Asterisk => '*',
+        }
+    }
+}
+
+/// Delimiter for emphasis (italic) text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum EmDelimiter {
+    /// Asterisk: `*text*`.
+    #[default]
+    Asterisk,
+    /// Underscore: `_text_`.
+    Underscore,
+}
+
+impl EmDelimiter {
+    /// Returns the delimiter character.
+    #[must_use]
+    #[inline]
+    pub const fn char(self) -> char {
+        match self {
+            Self::Asterisk => '*',
+            Self::Underscore => '_',
+        }
+    }
+}
+
+/// Delimiter for strong emphasis (bold) text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum StrongDelimiter {
+    /// Double asterisks: `**text**`.
+    #[default]
+    Asterisks,
+    /// Double underscores: `__text__`.
+    Underscores,
+}
+
+impl StrongDelimiter {
+    /// Returns the delimiter string.
+    #[must_use]
+    #[inline]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Asterisks => "**",
+            Self::Underscores => "__",
+        }
+    }
+}
+
+/// Horizontal rule style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum HorizontalRule {
+    /// Three dashes: `---`.
+    #[default]
+    Dashes,
+    /// Three asterisks: `***`.
+    Asterisks,
+    /// Three underscores: `___`.
+    Underscores,
+}
+
+impl HorizontalRule {
+    /// Returns the rule string.
+    #[must_use]
+    #[inline]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Dashes => "---",
+            Self::Asterisks => "***",
+            Self::Underscores => "___",
+        }
+    }
+}
+
 /// Mode for escaping markdown special characters in text content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
@@ -84,44 +182,27 @@ pub enum LinkReferenceStyle {
 /// Configuration options for the converter.
 ///
 /// Use [`Default::default()`] for sensible `CommonMark` defaults.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 #[non_exhaustive]
 pub struct Options {
     /// Heading rendering style.
     pub heading_style: HeadingStyle,
     /// Bullet character for unordered lists.
-    pub bullet_marker: char,
+    pub bullet_marker: BulletMarker,
     /// Code block rendering style.
     pub code_block_style: CodeBlockStyle,
     /// Fence character for fenced code blocks.
     pub fence: Fence,
     /// Delimiter for emphasis (italic).
-    pub em_delimiter: char,
+    pub em_delimiter: EmDelimiter,
     /// Delimiter for strong emphasis (bold).
-    pub strong_delimiter: &'static str,
+    pub strong_delimiter: StrongDelimiter,
     /// Horizontal rule string.
-    pub horizontal_rule: &'static str,
+    pub horizontal_rule: HorizontalRule,
     /// Escape mode for markdown special characters.
     pub escape_mode: EscapeMode,
     /// Link rendering style.
     pub link_style: LinkStyle,
     /// Reference-style link identifier format.
     pub link_reference_style: LinkReferenceStyle,
-}
-
-impl Default for Options {
-    fn default() -> Self {
-        Self {
-            heading_style: HeadingStyle::default(),
-            bullet_marker: '-',
-            code_block_style: CodeBlockStyle::default(),
-            fence: Fence::default(),
-            em_delimiter: '*',
-            strong_delimiter: "**",
-            horizontal_rule: "---",
-            escape_mode: EscapeMode::default(),
-            link_style: LinkStyle::default(),
-            link_reference_style: LinkReferenceStyle::default(),
-        }
-    }
 }

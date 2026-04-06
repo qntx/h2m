@@ -1,24 +1,23 @@
 //! Smoke tests for h2m — basic sanity checks across feature areas.
-#![allow(clippy::unwrap_used)]
 
 use h2m::convert;
 use pretty_assertions::assert_eq;
 
 #[test]
 fn heading_and_paragraph() {
-    let md = convert("<h1>Hello</h1><p>World</p>").unwrap();
+    let md = convert("<h1>Hello</h1><p>World</p>");
     assert_eq!(md, "# Hello\n\nWorld");
 }
 
 #[test]
 fn multiple_headings() {
-    let md = convert("<h1>One</h1><h2>Two</h2><h3>Three</h3>").unwrap();
+    let md = convert("<h1>One</h1><h2>Two</h2><h3>Three</h3>");
     assert_eq!(md, "# One\n\n## Two\n\n### Three");
 }
 
 #[test]
 fn heading_all_levels() {
-    let md = convert("<h4>Four</h4><h5>Five</h5><h6>Six</h6>").unwrap();
+    let md = convert("<h4>Four</h4><h5>Five</h5><h6>Six</h6>");
     assert_eq!(md, "#### Four\n\n##### Five\n\n###### Six");
 }
 
@@ -30,9 +29,7 @@ fn setext_headings() {
         .options(opts)
         .use_plugin(h2m::rules::CommonMark)
         .build();
-    let md = converter
-        .convert("<h1>Title</h1><h2>Sub</h2><h3>Three</h3>")
-        .unwrap();
+    let md = converter.convert("<h1>Title</h1><h2>Sub</h2><h3>Three</h3>");
     assert!(md.contains("Title\n====="));
     assert!(md.contains("Sub\n---"));
     assert!(md.contains("### Three"));
@@ -40,90 +37,89 @@ fn setext_headings() {
 
 #[test]
 fn strong_and_em() {
-    let md = convert("<p><strong>bold</strong> and <em>italic</em></p>").unwrap();
+    let md = convert("<p><strong>bold</strong> and <em>italic</em></p>");
     assert_eq!(md, "**bold** and *italic*");
 }
 
 #[test]
 fn inline_code() {
-    let md = convert("<p>use <code>cargo</code></p>").unwrap();
+    let md = convert("<p>use <code>cargo</code></p>");
     assert_eq!(md, "use `cargo`");
 }
 
 #[test]
 fn inline_code_with_backticks() {
-    let md = convert("<p><code>a`b`c</code></p>").unwrap();
+    let md = convert("<p><code>a`b`c</code></p>");
     assert_eq!(md, "``a`b`c``");
 }
 
 #[test]
 fn link() {
-    let md = convert(r#"<p><a href="https://rust-lang.org">Rust</a></p>"#).unwrap();
+    let md = convert(r#"<p><a href="https://rust-lang.org">Rust</a></p>"#);
     assert_eq!(md, "[Rust](https://rust-lang.org)");
 }
 
 #[test]
 fn link_with_title() {
-    let md =
-        convert(r#"<p><a href="https://rust-lang.org" title="Rust site">Rust</a></p>"#).unwrap();
+    let md = convert(r#"<p><a href="https://rust-lang.org" title="Rust site">Rust</a></p>"#);
     assert_eq!(md, r#"[Rust](https://rust-lang.org "Rust site")"#);
 }
 
 #[test]
 fn image() {
-    let md = convert(r#"<p><img src="cat.png" alt="A cat"/></p>"#).unwrap();
+    let md = convert(r#"<p><img src="cat.png" alt="A cat"/></p>"#);
     assert_eq!(md, "![A cat](cat.png)");
 }
 
 #[test]
 fn unordered_list() {
-    let md = convert("<ul><li>one</li><li>two</li><li>three</li></ul>").unwrap();
+    let md = convert("<ul><li>one</li><li>two</li><li>three</li></ul>");
     assert_eq!(md, "- one\n- two\n- three");
 }
 
 #[test]
 fn ordered_list() {
-    let md = convert("<ol><li>one</li><li>two</li><li>three</li></ol>").unwrap();
+    let md = convert("<ol><li>one</li><li>two</li><li>three</li></ol>");
     assert_eq!(md, "1. one\n2. two\n3. three");
 }
 
 #[test]
 fn ordered_list_with_start() {
-    let md = convert(r#"<ol start="5"><li>five</li><li>six</li></ol>"#).unwrap();
+    let md = convert(r#"<ol start="5"><li>five</li><li>six</li></ol>"#);
     assert_eq!(md, "5. five\n6. six");
 }
 
 #[test]
 fn nested_list() {
     let html = "<ul><li>a<ul><li>b</li><li>c</li></ul></li><li>d</li></ul>";
-    let md = convert(html).unwrap();
+    let md = convert(html);
     assert_eq!(md, "- a\n  - b\n  - c\n- d");
 }
 
 #[test]
 fn deeply_nested_list() {
     let html = "<ul><li>1<ul><li>2<ul><li>3</li></ul></li></ul></li></ul>";
-    let md = convert(html).unwrap();
+    let md = convert(html);
     assert_eq!(md, "- 1\n  - 2\n    - 3");
 }
 
 #[test]
 fn blockquote() {
-    let md = convert("<blockquote><p>quoted text</p></blockquote>").unwrap();
+    let md = convert("<blockquote><p>quoted text</p></blockquote>");
     assert_eq!(md, "> quoted text");
 }
 
 #[test]
 fn nested_blockquote() {
     let html = "<blockquote><blockquote><p>deep</p></blockquote></blockquote>";
-    let md = convert(html).unwrap();
+    let md = convert(html);
     assert!(md.contains("> > deep"));
 }
 
 #[test]
 fn code_block_with_language() {
     let html = r#"<pre><code class="language-rust">fn main() {}</code></pre>"#;
-    let md = convert(html).unwrap();
+    let md = convert(html);
     assert_eq!(md, "```rust\nfn main() {}\n```");
 }
 
@@ -131,52 +127,52 @@ fn code_block_with_language() {
 fn code_block_fence_escalation() {
     // Content contains triple backticks — fence must escalate.
     let html = "<pre><code>```\nsome code\n```</code></pre>";
-    let md = convert(html).unwrap();
+    let md = convert(html);
     assert!(md.starts_with("````"));
     assert!(md.contains("```\nsome code\n```"));
 }
 
 #[test]
 fn horizontal_rule() {
-    let md = convert("<p>before</p><hr/><p>after</p>").unwrap();
+    let md = convert("<p>before</p><hr/><p>after</p>");
     assert_eq!(md, "before\n\n---\n\nafter");
 }
 
 #[test]
 fn line_break() {
-    let md = convert("<p>line1<br/>line2</p>").unwrap();
+    let md = convert("<p>line1<br/>line2</p>");
     assert!(md.contains("line1"));
     assert!(md.contains("line2"));
 }
 
 #[test]
 fn script_removed() {
-    let md = convert("<p>hello</p><script>alert(1)</script><p>world</p>").unwrap();
+    let md = convert("<p>hello</p><script>alert(1)</script><p>world</p>");
     assert_eq!(md, "hello\n\nworld");
 }
 
 #[test]
 fn empty_input() {
-    let md = convert("").unwrap();
+    let md = convert("");
     assert_eq!(md, "");
 }
 
 #[test]
 fn whitespace_only() {
-    let md = convert("   \n\t  ").unwrap();
+    let md = convert("   \n\t  ");
     assert_eq!(md, "");
 }
 
 #[test]
 fn malformed_html() {
     // html5ever recovers gracefully.
-    let md = convert("<p>unclosed <b>bold</p>").unwrap();
+    let md = convert("<p>unclosed <b>bold</p>");
     assert!(md.contains("**bold**"));
 }
 
 #[test]
 fn gfm_strikethrough() {
-    let md = h2m::convert_gfm("<p><del>removed</del></p>").unwrap();
+    let md = h2m::convert_gfm("<p><del>removed</del></p>");
     assert_eq!(md, "~~removed~~");
 }
 
@@ -184,7 +180,7 @@ fn gfm_strikethrough() {
 fn gfm_table() {
     let html = "<table><thead><tr><th>Name</th><th>Age</th></tr></thead>\
                 <tbody><tr><td>Alice</td><td>30</td></tr></tbody></table>";
-    let md = h2m::convert_gfm(html).unwrap();
+    let md = h2m::convert_gfm(html);
     assert!(md.contains("| Name"));
     assert!(md.contains("| Alice"));
     assert!(md.contains("---"));
@@ -194,7 +190,7 @@ fn gfm_table() {
 fn gfm_table_with_alignment() {
     let html = r#"<table><thead><tr><th align="left">L</th><th align="center">C</th><th align="right">R</th></tr></thead>
                   <tbody><tr><td>a</td><td>b</td><td>c</td></tr></tbody></table>"#;
-    let md = h2m::convert_gfm(html).unwrap();
+    let md = h2m::convert_gfm(html);
     assert!(md.contains(":--"));
     assert!(md.contains("--:"));
 }
@@ -202,7 +198,7 @@ fn gfm_table_with_alignment() {
 #[test]
 fn gfm_task_list() {
     let html = r#"<ul><li><input type="checkbox" checked/> done</li><li><input type="checkbox"/> todo</li></ul>"#;
-    let md = h2m::convert_gfm(html).unwrap();
+    let md = h2m::convert_gfm(html);
     assert!(md.contains("[x]"));
     assert!(md.contains("[ ]"));
     assert!(md.contains("done"));
@@ -212,7 +208,7 @@ fn gfm_task_list() {
 #[test]
 fn html_entities_decoded() {
     // html5ever decodes entities during parsing.
-    let md = convert("<p>&amp; &lt; &gt;</p>").unwrap();
+    let md = convert("<p>&amp; &lt; &gt;</p>");
     // The decoded characters get escaped by our escape module.
     assert!(md.contains('&'));
     assert!(md.contains('<') || md.contains("\\<"));
@@ -220,51 +216,51 @@ fn html_entities_decoded() {
 
 #[test]
 fn heading_hash_escaped() {
-    let md = convert("<h1>C# Guide</h1>").unwrap();
+    let md = convert("<h1>C# Guide</h1>");
     assert_eq!(md, "# C\\# Guide");
 }
 
 #[test]
 fn heading_inside_link_renders_as_bold() {
-    let md = convert(r#"<a href="/page"><h2>Title</h2></a>"#).unwrap();
+    let md = convert(r#"<a href="/page"><h2>Title</h2></a>"#);
     assert!(md.contains("**"));
     assert!(!md.contains("## "));
 }
 
 #[test]
 fn nested_strong_dedup() {
-    let md = convert("<p><strong><strong>bold</strong></strong></p>").unwrap();
+    let md = convert("<p><strong><strong>bold</strong></strong></p>");
     // Should produce a single layer of bold, not double.
     assert_eq!(md, "**bold**");
 }
 
 #[test]
 fn nested_em_dedup() {
-    let md = convert("<p><em><em>italic</em></em></p>").unwrap();
+    let md = convert("<p><em><em>italic</em></em></p>");
     assert_eq!(md, "*italic*");
 }
 
 #[test]
 fn link_empty_content_fallback_title() {
-    let md = convert(r#"<p><a href="https://example.com" title="Example"></a></p>"#).unwrap();
+    let md = convert(r#"<p><a href="https://example.com" title="Example"></a></p>"#);
     assert_eq!(md, r#"[Example](https://example.com "Example")"#);
 }
 
 #[test]
 fn link_empty_content_fallback_aria_label() {
-    let md = convert(r#"<p><a href="https://example.com" aria-label="Example"></a></p>"#).unwrap();
+    let md = convert(r#"<p><a href="https://example.com" aria-label="Example"></a></p>"#);
     assert_eq!(md, "[Example](https://example.com)");
 }
 
 #[test]
 fn link_anchor_no_href_passthrough() {
-    let md = convert("<p><a>just text</a></p>").unwrap();
+    let md = convert("<p><a>just text</a></p>");
     assert_eq!(md, "just text");
 }
 
 #[test]
 fn link_hash_only_passthrough() {
-    let md = convert(r##"<p><a href="#">click</a></p>"##).unwrap();
+    let md = convert(r##"<p><a href="#">click</a></p>"##);
     assert_eq!(md, "click");
 }
 
@@ -274,9 +270,7 @@ fn image_with_domain() {
         .use_plugin(h2m::rules::CommonMark)
         .domain("example.com")
         .build();
-    let md = converter
-        .convert(r#"<img src="/img/cat.png" alt="cat"/>"#)
-        .unwrap();
+    let md = converter.convert(r#"<img src="/img/cat.png" alt="cat"/>"#);
     assert_eq!(md, "![cat](http://example.com/img/cat.png)");
 }
 
@@ -286,7 +280,7 @@ fn link_with_domain() {
         .use_plugin(h2m::rules::CommonMark)
         .domain("example.com")
         .build();
-    let md = converter.convert(r#"<a href="/about">About</a>"#).unwrap();
+    let md = converter.convert(r#"<a href="/about">About</a>"#);
     assert_eq!(md, "[About](http://example.com/about)");
 }
 
@@ -296,9 +290,7 @@ fn link_absolute_url_unchanged() {
         .use_plugin(h2m::rules::CommonMark)
         .domain("example.com")
         .build();
-    let md = converter
-        .convert(r#"<a href="https://other.com/page">Link</a>"#)
-        .unwrap();
+    let md = converter.convert(r#"<a href="https://other.com/page">Link</a>"#);
     assert_eq!(md, "[Link](https://other.com/page)");
 }
 
@@ -311,9 +303,7 @@ fn referenced_link_full() {
         .options(opts)
         .use_plugin(h2m::rules::CommonMark)
         .build();
-    let md = converter
-        .convert(r#"<p><a href="https://rust-lang.org">Rust</a></p>"#)
-        .unwrap();
+    let md = converter.convert(r#"<p><a href="https://rust-lang.org">Rust</a></p>"#);
     assert!(md.contains("[Rust][1]"));
     assert!(md.contains("[1]: https://rust-lang.org"));
 }
@@ -327,9 +317,7 @@ fn referenced_link_collapsed() {
         .options(opts)
         .use_plugin(h2m::rules::CommonMark)
         .build();
-    let md = converter
-        .convert(r#"<p><a href="https://rust-lang.org">Rust</a></p>"#)
-        .unwrap();
+    let md = converter.convert(r#"<p><a href="https://rust-lang.org">Rust</a></p>"#);
     assert!(md.contains("[Rust][]"));
     assert!(md.contains("[Rust]: https://rust-lang.org"));
 }
@@ -343,9 +331,7 @@ fn referenced_link_shortcut() {
         .options(opts)
         .use_plugin(h2m::rules::CommonMark)
         .build();
-    let md = converter
-        .convert(r#"<p><a href="https://rust-lang.org">Rust</a></p>"#)
-        .unwrap();
+    let md = converter.convert(r#"<p><a href="https://rust-lang.org">Rust</a></p>"#);
     assert!(md.contains("[Rust]"));
     assert!(md.contains("[Rust]: https://rust-lang.org"));
     // Should NOT contain the collapsed form.
@@ -354,14 +340,14 @@ fn referenced_link_shortcut() {
 
 #[test]
 fn hr_inside_heading_suppressed() {
-    let md = convert("<h2>Title<hr/>More</h2>").unwrap();
+    let md = convert("<h2>Title<hr/>More</h2>");
     assert!(!md.contains("---"));
     assert!(md.contains("Title"));
 }
 
 #[test]
 fn iframe_rendered_as_link() {
-    let md = convert(r#"<iframe src="https://example.com/embed"></iframe>"#).unwrap();
+    let md = convert(r#"<iframe src="https://example.com/embed"></iframe>"#);
     assert_eq!(md, "[iframe](https://example.com/embed)");
 }
 
@@ -371,21 +357,19 @@ fn iframe_with_domain() {
         .use_plugin(h2m::rules::CommonMark)
         .domain("example.com")
         .build();
-    let md = converter
-        .convert(r#"<iframe src="/embed/video"></iframe>"#)
-        .unwrap();
+    let md = converter.convert(r#"<iframe src="/embed/video"></iframe>"#);
     assert_eq!(md, "[iframe](http://example.com/embed/video)");
 }
 
 #[test]
 fn iframe_data_uri_skipped() {
-    let md = convert(r#"<iframe src="data:text/html,<h1>hi</h1>"></iframe>"#).unwrap();
+    let md = convert(r#"<iframe src="data:text/html,<h1>hi</h1>"></iframe>"#);
     assert_eq!(md, "");
 }
 
 #[test]
 fn noscript_removed() {
-    let md = convert("<p>hello</p><noscript>fallback</noscript><p>world</p>").unwrap();
+    let md = convert("<p>hello</p><noscript>fallback</noscript><p>world</p>");
     assert_eq!(md, "hello\n\nworld");
 }
 
@@ -395,9 +379,7 @@ fn keep_tags() {
         .use_plugin(h2m::rules::CommonMark)
         .keep(&["custom-tag"])
         .build();
-    let md = converter
-        .convert("<p>before</p><custom-tag>inside</custom-tag><p>after</p>")
-        .unwrap();
+    let md = converter.convert("<p>before</p><custom-tag>inside</custom-tag><p>after</p>");
     assert!(md.contains("<custom-tag>"));
 }
 
@@ -407,9 +389,7 @@ fn remove_tags() {
         .use_plugin(h2m::rules::CommonMark)
         .remove(&["aside"])
         .build();
-    let md = converter
-        .convert("<p>before</p><aside>sidebar</aside><p>after</p>")
-        .unwrap();
+    let md = converter.convert("<p>before</p><aside>sidebar</aside><p>after</p>");
     assert!(!md.contains("sidebar"));
     assert!(md.contains("before"));
     assert!(md.contains("after"));

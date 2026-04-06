@@ -21,7 +21,7 @@ impl Rule for Image {
             return Action::Skip;
         }
 
-        let absolute_src = dom::resolve_url(ctx.domain(), src);
+        let absolute_src = ctx.resolve_url(src);
         let alt = dom::attr(element, "alt").unwrap_or("").replace('\n', " ");
         let title = dom::attr(element, "title");
 
