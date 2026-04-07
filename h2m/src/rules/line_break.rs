@@ -7,7 +7,7 @@ use crate::converter::{Action, Rule};
 
 /// Handles `<br>` elements as `CommonMark` hard line breaks (`  \n`).
 #[derive(Debug, Clone, Copy)]
-pub struct LineBreak;
+pub(super) struct LineBreak;
 
 impl Rule for LineBreak {
     fn tags(&self) -> &'static [&'static str] {

@@ -60,8 +60,8 @@ pub trait Rule: Send + Sync {
 /// use h2m::rules::CommonMark;
 ///
 /// let converter = Converter::builder()
-///     .use_plugin(CommonMark)
-///     .use_plugin(Gfm)
+///     .use_plugin(&CommonMark)
+///     .use_plugin(&Gfm)
 ///     .build();
 ///
 /// let md = converter.convert("<table><tr><th>A</th></tr></table>");
@@ -74,7 +74,6 @@ pub trait Plugin {
 
 /// Builder for constructing a [`Converter`] with custom rules and options.
 #[derive(Default)]
-#[allow(clippy::module_name_repetitions)]
 pub struct ConverterBuilder {
     /// Conversion options.
     options: Options,
@@ -130,8 +129,7 @@ impl ConverterBuilder {
 
     /// Applies a plugin, which may register rules and hooks.
     #[must_use]
-    #[allow(clippy::needless_pass_by_value)]
-    pub fn use_plugin(mut self, plugin: impl Plugin) -> Self {
+    pub fn use_plugin(mut self, plugin: &impl Plugin) -> Self {
         plugin.register(&mut self);
         self
     }
@@ -187,8 +185,8 @@ impl ConverterBuilder {
 ///
 /// let converter = Converter::builder()
 ///     .options(Options::default())
-///     .use_plugin(CommonMark)
-///     .use_plugin(Gfm)
+///     .use_plugin(&CommonMark)
+///     .use_plugin(&Gfm)
 ///     .domain("example.com")
 ///     .build();
 ///
@@ -363,21 +361,24 @@ impl Converter {
 
         // Dispatch to rules (LIFO — last registered wins).
         if let Some(rules) = self.rules.get(tag) {
-            // Extract child content for rule dispatch.
             let content = buf[child_start..].to_owned();
-            for rule in rules.iter().rev() {
-                match rule.apply(&content, element, &mut *ctx) {
-                    Action::Replace(md) => {
-                        buf.truncate(child_start);
-                        buf.push_str(&md);
-                        return;
-                    }
-                    Action::Remove => {
-                        buf.truncate(child_start);
-                        return;
-                    }
-                    Action::Skip => {}
+            let action =
+                rules
+                    .iter()
+                    .rev()
+                    .find_map(|rule| match rule.apply(&content, element, ctx) {
+                        Action::Skip => None,
+                        other => Some(other),
+                    });
+            match action {
+                Some(Action::Replace(md)) => {
+                    buf.truncate(child_start);
+                    buf.push_str(&md);
                 }
+                Some(Action::Remove) => {
+                    buf.truncate(child_start);
+                }
+                _ => {}
             }
         }
 

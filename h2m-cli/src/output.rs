@@ -9,7 +9,7 @@ use crate::cli::Cli;
 
 /// Emits a single `ScrapeResult` to stdout (JSON pretty-printed or plain
 /// Markdown).
-pub fn emit_single(cli: &Cli, result: &ScrapeResult) {
+pub(crate) fn emit_single(cli: &Cli, result: &ScrapeResult) {
     if cli.json {
         write_json_pretty(result);
     } else {
@@ -18,7 +18,7 @@ pub fn emit_single(cli: &Cli, result: &ScrapeResult) {
 }
 
 /// Emits a plain markdown string to stdout (for stdin mode).
-pub fn emit_single_markdown(cli: &Cli, md: &str) {
+pub(crate) fn emit_single_markdown(cli: &Cli, md: &str) {
     if cli.json {
         #[derive(serde::Serialize)]
         struct StdinResult<'a> {
@@ -31,7 +31,7 @@ pub fn emit_single_markdown(cli: &Cli, md: &str) {
 }
 
 /// Emits a streaming NDJSON line for batch results.
-pub fn emit_ndjson(result: &Result<ScrapeResult, ScrapeError>) {
+pub(crate) fn emit_ndjson(result: &Result<ScrapeResult, ScrapeError>) {
     let line = match result {
         Ok(r) => serde_json::to_string(r),
         Err(e) => serde_json::to_string(e),
@@ -42,7 +42,7 @@ pub fn emit_ndjson(result: &Result<ScrapeResult, ScrapeError>) {
 }
 
 /// Emits a batch result line (plain text mode).
-pub fn emit_batch_plain(result: &Result<ScrapeResult, ScrapeError>) {
+pub(crate) fn emit_batch_plain(result: &Result<ScrapeResult, ScrapeError>) {
     match result {
         Ok(r) => write_stdout_line(&r.markdown),
         Err(e) => eprintln!("error: {e}"),
@@ -50,7 +50,7 @@ pub fn emit_batch_plain(result: &Result<ScrapeResult, ScrapeError>) {
 }
 
 /// Prints a JSON error object to stdout.
-pub fn emit_json_error(msg: &str, url: Option<&str>) {
+pub(crate) fn emit_json_error(msg: &str, url: Option<&str>) {
     let e = ScrapeError::new(msg, url.map(str::to_owned));
     write_json_pretty(&e);
 }
@@ -66,8 +66,8 @@ fn write_markdown(cli: &Cli, md: &str) {
     } else {
         let stdout = io::stdout();
         let mut out = stdout.lock();
-        let _ = out.write_all(md.as_bytes());
-        let _ = out.write_all(b"\n");
+        _ = out.write_all(md.as_bytes());
+        _ = out.write_all(b"\n");
     }
 }
 
@@ -82,5 +82,5 @@ fn write_json_pretty(value: &impl serde::Serialize) {
 fn write_stdout_line(line: &str) {
     let stdout = io::stdout();
     let mut out = stdout.lock();
-    let _ = writeln!(out, "{line}");
+    _ = writeln!(out, "{line}");
 }

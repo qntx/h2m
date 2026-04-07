@@ -10,7 +10,7 @@ const MARKDOWN_SPECIAL: &[char] = &['\\', '*', '_', '`', '[', ']', '|', '<', '>'
 /// Escapes markdown special characters in text content.
 ///
 /// Returns a borrowed [`Cow`] when no escaping is needed (common fast path).
-pub fn escape_markdown(text: &str, mode: EscapeMode) -> Cow<'_, str> {
+pub(crate) fn escape_markdown(text: &str, mode: EscapeMode) -> Cow<'_, str> {
     if matches!(mode, EscapeMode::Disabled) {
         return Cow::Borrowed(text);
     }
@@ -31,18 +31,24 @@ pub fn escape_markdown(text: &str, mode: EscapeMode) -> Cow<'_, str> {
         if MARKDOWN_SPECIAL.contains(&c) {
             result.push('\\');
             result.push(c);
-        } else if i == 0 || i.checked_sub(1).and_then(|j| text.as_bytes().get(j)) == Some(&b'\n') {
-            // Check for line-start patterns that could be interpreted as
-            // markdown structure.
-            let consumed = write_escaped_line_start(&text[i..], &mut result);
-            if consumed > 0 {
-                // The main loop already consumed the first original char,
-                // so advance past the remaining consumed − 1.
-                for _ in 0..consumed - 1 {
-                    let _ = chars.next();
-                }
-            } else {
-                result.push(c);
+            continue;
+        }
+
+        let is_line_start =
+            i == 0 || i.checked_sub(1).and_then(|j| text.as_bytes().get(j)) == Some(&b'\n');
+        if !is_line_start {
+            result.push(c);
+            continue;
+        }
+
+        // Check for line-start patterns that could be interpreted as
+        // markdown structure.
+        let consumed = write_escaped_line_start(&text[i..], &mut result);
+        if consumed > 0 {
+            // The main loop already consumed the first original char,
+            // so advance past the remaining consumed − 1.
+            for _ in 0..consumed - 1 {
+                _ = chars.next();
             }
         } else {
             result.push(c);

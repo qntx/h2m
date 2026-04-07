@@ -8,7 +8,7 @@ use crate::dom;
 
 /// Handles `<img>` elements with absolute URL resolution.
 #[derive(Debug, Clone, Copy)]
-pub struct Image;
+pub(super) struct Image;
 
 impl Rule for Image {
     fn tags(&self) -> &'static [&'static str] {

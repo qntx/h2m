@@ -103,7 +103,7 @@ fn detect_main_content_doc(doc: &Html) -> Option<String> {
 /// 1. Try semantic selectors (`article`, `main`, `[role="main"]`, …).
 /// 2. If none match, strip noise elements (`nav`, `footer`, `aside`, …)
 ///    and return the cleaned body HTML.
-pub fn readable_content_doc(doc: &Html, original: &str) -> String {
+pub(crate) fn readable_content_doc(doc: &Html, original: &str) -> String {
     if let Some(main) = detect_main_content_doc(doc) {
         return main;
     }
@@ -151,16 +151,16 @@ fn render_children(
             scraper::Node::Text(text) => buf.push_str(text),
             scraper::Node::Element(el) => {
                 let tag = el.name();
-                let _ = write!(buf, "<{tag}");
+                _ = write!(buf, "<{tag}");
                 for (name, val) in el.attrs() {
-                    let _ = write!(buf, " {name}=\"");
+                    _ = write!(buf, " {name}=\"");
                     escape_attr_value(val, buf);
                     buf.push('"');
                 }
                 buf.push('>');
                 if !is_void_element(tag) {
                     render_children(child, skip, buf);
-                    let _ = write!(buf, "</{tag}>");
+                    _ = write!(buf, "</{tag}>");
                 }
             }
             scraper::Node::Document | scraper::Node::Fragment => {

@@ -14,7 +14,7 @@ const ATX_PREFIXES: [&str; 6] = ["#", "##", "###", "####", "#####", "######"];
 
 /// Handles `<h1>` through `<h6>` elements.
 #[derive(Debug, Clone, Copy)]
-pub struct Heading;
+pub(super) struct Heading;
 
 impl Rule for Heading {
     fn tags(&self) -> &'static [&'static str] {
@@ -51,7 +51,7 @@ impl Rule for Heading {
                 md
             }
             _ => {
-                let prefix = ATX_PREFIXES[level - 1];
+                let prefix = ATX_PREFIXES.get(level - 1).copied().unwrap_or("######");
                 format!("\n\n{prefix} {trimmed}\n\n")
             }
         };

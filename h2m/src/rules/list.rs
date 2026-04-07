@@ -8,7 +8,7 @@ use crate::dom;
 
 /// Handles `<ul>` and `<ol>` list wrapper elements.
 #[derive(Debug, Clone, Copy)]
-pub struct List;
+pub(super) struct List;
 
 impl Rule for List {
     fn tags(&self) -> &'static [&'static str] {
@@ -31,7 +31,7 @@ impl Rule for List {
 
 /// Handles `<li>` elements using pre-computed list metadata.
 #[derive(Debug, Clone, Copy)]
-pub struct ListItem;
+pub(super) struct ListItem;
 
 impl Rule for ListItem {
     fn tags(&self) -> &'static [&'static str] {
@@ -57,12 +57,12 @@ impl Rule for ListItem {
             if i == 0 {
                 result.push_str(meta.prefix());
                 result.push_str(line.trim_start());
-            } else {
-                result.push('\n');
-                result.push_str(&continuation_indent);
-                if !line.trim().is_empty() {
-                    result.push_str(line);
-                }
+                continue;
+            }
+            result.push('\n');
+            result.push_str(&continuation_indent);
+            if !line.trim().is_empty() {
+                result.push_str(line);
             }
         }
         result.push('\n');

@@ -10,8 +10,11 @@ use clap::{Parser, ValueEnum};
 /// When omitted, reads from stdin. Use --json for structured output.
 #[derive(Parser, Debug)]
 #[command(name = "h2m", version, about, long_about = None)]
-#[allow(clippy::struct_excessive_bools)]
-pub struct Cli {
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "CLI flags are naturally boolean"
+)]
+pub(crate) struct Cli {
     /// URL(s), file path(s), or "-" for stdin.
     pub input: Vec<String>,
 
@@ -261,7 +264,7 @@ impl From<StrongStyle> for h2m::StrongDelimiter {
 }
 
 /// Builds `h2m::Options` from CLI arguments.
-pub fn build_options(cli: &Cli) -> h2m::Options {
+pub(crate) fn build_options(cli: &Cli) -> h2m::Options {
     let mut opts = h2m::Options::default()
         .with_heading_style(cli.heading_style.into())
         .with_bullet_marker(cli.bullet.into())

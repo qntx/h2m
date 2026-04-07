@@ -11,7 +11,7 @@ readme.workspace = true
 
 [features]
 default = []
-scrape = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio"]
+scrape = ["dep:reqwest", "dep:serde", "dep:tokio"]
 
 [dependencies]
 scraper.workspace = true
@@ -21,7 +21,6 @@ url.workspace = true
 
 reqwest = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
-serde_json = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 
 [dev-dependencies]

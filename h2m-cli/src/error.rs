@@ -2,7 +2,7 @@
 
 /// Errors that can occur during CLI execution.
 #[derive(Debug, thiserror::Error)]
-pub enum CliError {
+pub(crate) enum CliError {
     /// HTTP scrape or conversion error from the library.
     #[error("{0}")]
     Scrape(#[from] h2m::scrape::ScrapeError),
@@ -23,7 +23,7 @@ pub enum CliError {
 
 impl CliError {
     /// Returns the URL associated with this error, if any.
-    pub fn url(&self) -> Option<&str> {
+    pub(crate) fn url(&self) -> Option<&str> {
         match self {
             Self::Scrape(e) => e.url(),
             Self::Io(_) => None,

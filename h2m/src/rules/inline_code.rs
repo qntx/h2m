@@ -13,7 +13,7 @@ use crate::dom;
 /// Does **not** handle `<code>` inside `<pre>` — that is handled by
 /// [`super::code_block::CodeBlock`].
 #[derive(Debug, Clone, Copy)]
-pub struct InlineCode;
+pub(super) struct InlineCode;
 
 impl Rule for InlineCode {
     fn tags(&self) -> &'static [&'static str] {

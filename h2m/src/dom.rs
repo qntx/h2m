@@ -6,7 +6,7 @@ use scraper::node::Node;
 
 /// Returns the length of the longest consecutive run of `needle` in `text`.
 #[inline]
-pub fn max_consecutive_char(text: &str, needle: char) -> usize {
+pub(crate) fn max_consecutive_char(text: &str, needle: char) -> usize {
     let mut max = 0usize;
     let mut current = 0usize;
     for c in text.chars() {
@@ -25,14 +25,14 @@ pub fn max_consecutive_char(text: &str, needle: char) -> usize {
 /// Returns the value of an attribute on an element.
 #[inline]
 #[must_use]
-pub fn attr<'a>(element: &'a ElementRef<'_>, name: &str) -> Option<&'a str> {
+pub(crate) fn attr<'a>(element: &'a ElementRef<'_>, name: &str) -> Option<&'a str> {
     element.value().attr(name)
 }
 
 /// Returns `true` if the given element has an ancestor with the specified tag
 /// name.
 #[must_use]
-pub fn has_ancestor(element: &ElementRef<'_>, target_tag: &str) -> bool {
+pub(crate) fn has_ancestor(element: &ElementRef<'_>, target_tag: &str) -> bool {
     let mut current = element.parent();
     while let Some(parent) = current {
         if let Some(el) = parent.value().as_element()
@@ -48,7 +48,7 @@ pub fn has_ancestor(element: &ElementRef<'_>, target_tag: &str) -> bool {
 /// Returns `true` if the given element's immediate parent has the specified tag
 /// name.
 #[must_use]
-pub fn parent_tag_is(element: &ElementRef<'_>, target_tag: &str) -> bool {
+pub(crate) fn parent_tag_is(element: &ElementRef<'_>, target_tag: &str) -> bool {
     element
         .parent()
         .and_then(|p| p.value().as_element())
@@ -57,7 +57,7 @@ pub fn parent_tag_is(element: &ElementRef<'_>, target_tag: &str) -> bool {
 
 /// Collects all text content from a DOM subtree recursively.
 #[must_use]
-pub fn collect_text(node: &NodeRef<'_, Node>) -> String {
+pub(crate) fn collect_text(node: &NodeRef<'_, Node>) -> String {
     let mut buf = String::new();
     collect_text_inner(node, &mut buf);
     buf
@@ -78,7 +78,7 @@ fn collect_text_inner(node: &NodeRef<'_, Node>, buf: &mut String) {
 /// Returns `true` if the given element has an ancestor matching any of the
 /// specified tag names.
 #[must_use]
-pub fn has_ancestor_any(element: &ElementRef<'_>, tags: &[&str]) -> bool {
+pub(crate) fn has_ancestor_any(element: &ElementRef<'_>, tags: &[&str]) -> bool {
     let mut current = element.parent();
     while let Some(parent) = current {
         if let Some(el) = parent.value().as_element()
@@ -96,7 +96,7 @@ pub fn has_ancestor_any(element: &ElementRef<'_>, tags: &[&str]) -> bool {
 ///
 /// This mirrors the Go `AddSpaceIfNecessary` function.
 #[must_use]
-pub fn add_space_if_necessary(element: &ElementRef<'_>, markdown: String) -> String {
+pub(crate) fn add_space_if_necessary(element: &ElementRef<'_>, markdown: String) -> String {
     let node = element.id();
     let tree = element.tree();
     let Some(node_ref) = tree.get(node) else {

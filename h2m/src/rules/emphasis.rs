@@ -8,7 +8,7 @@ use crate::dom;
 
 /// Handles `<em>` and `<i>` elements.
 #[derive(Debug, Clone, Copy)]
-pub struct Emphasis;
+pub(super) struct Emphasis;
 
 impl Rule for Emphasis {
     fn tags(&self) -> &'static [&'static str] {

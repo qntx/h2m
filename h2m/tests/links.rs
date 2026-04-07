@@ -1,4 +1,16 @@
+#![cfg(test)]
 //! Link and image conversion tests.
+
+use ego_tree as _;
+#[cfg(feature = "scrape")]
+use reqwest as _;
+use scraper as _;
+#[cfg(feature = "scrape")]
+use serde as _;
+use thiserror as _;
+#[cfg(feature = "scrape")]
+use tokio as _;
+use url as _;
 
 mod common;
 

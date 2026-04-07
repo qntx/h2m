@@ -12,7 +12,7 @@ use crate::dom;
 /// require a nested converter). For regular iframes, the `src` is rendered
 /// as a link.
 #[derive(Debug, Clone, Copy)]
-pub struct Iframe;
+pub(super) struct Iframe;
 
 impl Rule for Iframe {
     fn tags(&self) -> &'static [&'static str] {

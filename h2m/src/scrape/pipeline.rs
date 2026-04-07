@@ -35,8 +35,7 @@ pub(super) fn build_result(
 
     let markdown = cfg.converter.convert(&html_to_convert);
 
-    #[allow(clippy::cast_possible_truncation)]
-    let elapsed_ms = start.elapsed().as_millis() as u64;
+    let elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
 
     ScrapeResult {
         markdown,

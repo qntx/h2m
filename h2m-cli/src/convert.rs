@@ -40,10 +40,10 @@ fn build_scraper(cli: &Cli) -> Result<Scraper, CliError> {
 fn build_converter(cli: &Cli) -> Converter {
     let mut builder = Converter::builder()
         .options(cli::build_options(cli))
-        .use_plugin(h2m::rules::CommonMark);
+        .use_plugin(&h2m::rules::CommonMark);
 
     if cli.gfm {
-        builder = builder.use_plugin(h2m::plugins::Gfm);
+        builder = builder.use_plugin(&h2m::plugins::Gfm);
     }
     if let Some(d) = &cli.domain {
         builder = builder.domain(d);
@@ -57,7 +57,7 @@ fn build_converter(cli: &Cli) -> Converter {
 /// # Errors
 ///
 /// Returns `CliError` on scrape failures, I/O errors, or file read errors.
-pub async fn run(cli: &Cli) -> Result<(), CliError> {
+pub(crate) async fn run(cli: &Cli) -> Result<(), CliError> {
     let inputs = collect_inputs(cli)?;
 
     if inputs.is_empty() {
@@ -67,8 +67,8 @@ pub async fn run(cli: &Cli) -> Result<(), CliError> {
 
     let scraper = build_scraper(cli)?;
 
-    if inputs.len() == 1 {
-        let result = scraper.scrape(&inputs[0]).await?;
+    if let [input] = inputs.as_slice() {
+        let result = scraper.scrape(input).await?;
         output::emit_single(cli, &result);
     } else {
         run_batch(cli, &scraper, &inputs).await;

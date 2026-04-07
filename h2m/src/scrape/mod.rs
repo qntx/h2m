@@ -25,7 +25,6 @@ use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 pub(crate) use types::ContentExtraction;
 use types::ConvertConfig;
-#[allow(clippy::module_name_repetitions)]
 pub use types::{Metadata, ScrapeError, ScrapeResult};
 
 use crate::converter::Converter;
@@ -168,9 +167,9 @@ impl ScraperBuilder {
 
         let mut builder = Converter::builder()
             .options(self.options)
-            .use_plugin(CommonMark);
+            .use_plugin(&CommonMark);
         if self.gfm {
-            builder = builder.use_plugin(Gfm);
+            builder = builder.use_plugin(&Gfm);
         }
         if let Some(d) = &self.domain {
             builder = builder.domain(d);
@@ -286,35 +285,51 @@ impl Scraper {
         let cfg = Arc::new(self.config.clone());
         let delay = self.delay;
 
-        let producer = tokio::spawn(async move {
-            for (i, url) in urls_owned.iter().enumerate() {
-                if i > 0 && !delay.is_zero() {
-                    tokio::time::sleep(delay).await;
-                }
-
-                let Ok(permit) = Arc::clone(&sem).acquire_owned().await else {
-                    break;
-                };
-                let tx_c = tx.clone();
-                let owned_url = url.clone();
-                let cli = client.clone();
-                let cfg_task = Arc::clone(&cfg);
-
-                tokio::spawn(async move {
-                    let _permit = permit;
-                    let start = Instant::now();
-                    let result = http::fetch_html(&cli, &owned_url).await.map(|response| {
-                        pipeline::build_result(&owned_url, &response, start, &cfg_task)
-                    });
-                    let _ = tx_c.send(result).await;
-                });
-            }
-        });
+        let producer = tokio::spawn(produce_tasks(urls_owned, client, cfg, sem, tx, delay));
 
         while let Some(result) = rx.recv().await {
             on_result(result);
         }
 
-        let _ = producer.await;
+        _ = producer.await;
     }
+}
+
+async fn produce_tasks(
+    urls: Vec<String>,
+    client: reqwest::Client,
+    cfg: Arc<ConvertConfig>,
+    sem: Arc<Semaphore>,
+    tx: tokio::sync::mpsc::Sender<Result<ScrapeResult, ScrapeError>>,
+    delay: Duration,
+) {
+    for (i, url) in urls.iter().enumerate() {
+        if i > 0 && !delay.is_zero() {
+            tokio::time::sleep(delay).await;
+        }
+        let Ok(permit) = Arc::clone(&sem).acquire_owned().await else {
+            break;
+        };
+        tokio::spawn(scrape_task(
+            client.clone(),
+            url.clone(),
+            Arc::clone(&cfg),
+            tx.clone(),
+            permit,
+        ));
+    }
+}
+
+async fn scrape_task(
+    client: reqwest::Client,
+    url: String,
+    cfg: Arc<ConvertConfig>,
+    tx: tokio::sync::mpsc::Sender<Result<ScrapeResult, ScrapeError>>,
+    _permit: tokio::sync::OwnedSemaphorePermit,
+) {
+    let start = Instant::now();
+    let result = http::fetch_html(&client, &url)
+        .await
+        .map(|response| pipeline::build_result(&url, &response, start, &cfg));
+    _ = tx.send(result).await;
 }

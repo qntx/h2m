@@ -6,7 +6,7 @@ use crate::converter::Converter;
 
 /// How to extract content from the HTML document before conversion.
 #[derive(Debug, Clone, Default)]
-pub enum ContentExtraction {
+pub(crate) enum ContentExtraction {
     /// Use the full document.
     #[default]
     Full,
@@ -55,7 +55,6 @@ pub(super) struct HttpResponse {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
-#[allow(clippy::module_name_repetitions)]
 pub struct ScrapeResult {
     /// Converted Markdown content.
     pub markdown: String,
@@ -99,7 +98,6 @@ pub struct Metadata {
 /// Error returned by scrape operations.
 #[derive(Debug, Clone, thiserror::Error)]
 #[non_exhaustive]
-#[allow(clippy::module_name_repetitions)]
 pub enum ScrapeError {
     /// HTTP request or response decoding failed.
     #[error("HTTP error for {url}: {message}")]

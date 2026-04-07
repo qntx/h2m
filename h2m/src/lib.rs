@@ -19,8 +19,8 @@
 //!
 //! let converter = Converter::builder()
 //!     .options(Options::default())
-//!     .use_plugin(CommonMark)
-//!     .use_plugin(Gfm)
+//!     .use_plugin(&CommonMark)
+//!     .use_plugin(&Gfm)
 //!     .domain("example.com")
 //!     .build();
 //!
@@ -39,6 +39,9 @@
 //! ```
 
 use std::sync::LazyLock;
+
+#[cfg(test)]
+use pretty_assertions as _;
 
 pub mod html;
 pub mod plugins;
@@ -65,14 +68,14 @@ pub use options::{
 /// Errors that can occur during HTML-to-Markdown conversion.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum Error {
+pub enum ConvertError {
     /// An I/O error occurred while reading input.
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
 
 /// A specialized [`Result`] type for h2m operations.
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, ConvertError>;
 
 /// Converts HTML to Markdown using default `CommonMark` settings.
 ///
@@ -82,13 +85,13 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// # use h2m::Converter;
 /// # use h2m::rules::CommonMark;
 /// let converter = Converter::builder()
-///     .use_plugin(CommonMark)
+///     .use_plugin(&CommonMark)
 ///     .build();
 /// ```
 #[must_use]
 pub fn convert(html: &str) -> String {
     static CONVERTER: LazyLock<Converter> =
-        LazyLock::new(|| Converter::builder().use_plugin(rules::CommonMark).build());
+        LazyLock::new(|| Converter::builder().use_plugin(&rules::CommonMark).build());
     CONVERTER.convert(html)
 }
 
@@ -97,8 +100,8 @@ pub fn convert(html: &str) -> String {
 pub fn convert_gfm(html: &str) -> String {
     static CONVERTER: LazyLock<Converter> = LazyLock::new(|| {
         Converter::builder()
-            .use_plugin(rules::CommonMark)
-            .use_plugin(plugins::Gfm)
+            .use_plugin(&rules::CommonMark)
+            .use_plugin(&plugins::Gfm)
             .build()
     });
     CONVERTER.convert(html)

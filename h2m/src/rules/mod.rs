@@ -79,7 +79,6 @@ mod tests {
 /// code blocks, links, images, lists, blockquotes, horizontal rules, and
 /// line breaks.
 #[derive(Debug, Clone, Copy)]
-#[allow(clippy::exhaustive_structs)]
 pub struct CommonMark;
 
 impl Plugin for CommonMark {

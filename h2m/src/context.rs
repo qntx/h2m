@@ -196,60 +196,57 @@ impl<'a> Context<'a> {
             name == "ul" || name == "ol"
         });
 
-        if is_list {
-            let el = node_ref.value().as_element();
-            let is_ordered = el.is_some_and(|e| e.name() == "ol");
-            let start: usize = el
-                .and_then(|e| e.attr("start"))
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(1);
-
-            let li_count = node_ref
-                .children()
-                .filter(|c| c.value().as_element().is_some_and(|e| e.name() == "li"))
-                .count();
-
-            let max_number = start + li_count.saturating_sub(1);
-            let number_width = if is_ordered {
-                digit_count(max_number)
-            } else {
-                0
-            };
-
-            let mut item_index = 0usize;
-            for child in node_ref.children() {
-                if child.value().as_element().is_some_and(|e| e.name() == "li") {
-                    let prefix = if is_ordered {
-                        let num = start + item_index;
-                        format!("{num:>number_width$}. ")
-                    } else {
-                        format!("{} ", ctx.options.bullet_marker().char())
-                    };
-                    let prefix_width = prefix.len();
-
-                    ctx.list_metadata.insert(
-                        child.id(),
-                        ListMetadata {
-                            prefix,
-                            prefix_width,
-                            parent_indent,
-                        },
-                    );
-
-                    Self::annotate_list_node(
-                        child.id(),
-                        document,
-                        ctx,
-                        parent_indent + prefix_width,
-                    );
-
-                    item_index += 1;
-                }
-            }
-        } else {
+        if !is_list {
             for child in node_ref.children() {
                 Self::annotate_list_node(child.id(), document, ctx, parent_indent);
             }
+            return;
+        }
+
+        let el = node_ref.value().as_element();
+        let is_ordered = el.is_some_and(|e| e.name() == "ol");
+        let start: usize = el
+            .and_then(|e| e.attr("start"))
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1);
+
+        let li_count = node_ref
+            .children()
+            .filter(|c| c.value().as_element().is_some_and(|e| e.name() == "li"))
+            .count();
+
+        let max_number = start + li_count.saturating_sub(1);
+        let number_width = if is_ordered {
+            digit_count(max_number)
+        } else {
+            0
+        };
+
+        let mut item_index = 0usize;
+        for child in node_ref.children() {
+            if child.value().as_element().is_none_or(|e| e.name() != "li") {
+                continue;
+            }
+            let prefix = if is_ordered {
+                let num = start + item_index;
+                format!("{num:>number_width$}. ")
+            } else {
+                format!("{} ", ctx.options.bullet_marker().char())
+            };
+            let prefix_width = prefix.len();
+
+            ctx.list_metadata.insert(
+                child.id(),
+                ListMetadata {
+                    prefix,
+                    prefix_width,
+                    parent_indent,
+                },
+            );
+
+            Self::annotate_list_node(child.id(), document, ctx, parent_indent + prefix_width);
+
+            item_index += 1;
         }
     }
 }

@@ -8,7 +8,7 @@ use crate::dom;
 
 /// Handles `<strong>` and `<b>` elements.
 #[derive(Debug, Clone, Copy)]
-pub struct Strong;
+pub(super) struct Strong;
 
 impl Rule for Strong {
     fn tags(&self) -> &'static [&'static str] {

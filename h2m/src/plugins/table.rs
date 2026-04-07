@@ -13,7 +13,7 @@ use crate::dom;
 
 /// Handles `<table>` elements, rendering them as GFM pipe tables.
 #[derive(Debug, Clone, Copy)]
-pub struct TableRule;
+pub(crate) struct TableRule;
 
 impl Rule for TableRule {
     fn tags(&self) -> &'static [&'static str] {
@@ -34,27 +34,28 @@ impl Rule for TableRule {
         // Compute max width per column (minimum 3 for "---").
         let mut col_widths = vec![3usize; col_count];
         for row in &rows {
-            for (j, cell) in row.cells.iter().enumerate() {
-                col_widths[j] = col_widths[j].max(cell.text.len().max(3));
+            for (w, cell) in col_widths.iter_mut().zip(row.cells.iter()) {
+                *w = (*w).max(cell.text.len().max(3));
             }
         }
 
         let empty_header;
-        let (header, body_rows) = if rows.first().is_some_and(|r| r.is_header) {
-            (&rows[0], &rows[1..])
-        } else {
-            empty_header = TableRow {
-                is_header: true,
-                cells: vec![
-                    TableCell {
-                        text: String::new(),
-                        alignment: Alignment::None,
-                    };
-                    col_count
-                ],
+        let (header, body_rows) =
+            if let Some((first, rest)) = rows.split_first().filter(|(r, _)| r.is_header) {
+                (first, rest)
+            } else {
+                empty_header = TableRow {
+                    is_header: true,
+                    cells: vec![
+                        TableCell {
+                            text: String::new(),
+                            alignment: Alignment::None,
+                        };
+                        col_count
+                    ],
+                };
+                (&empty_header, rows.as_slice())
             };
-            (&empty_header, rows.as_slice())
-        };
 
         let mut output = String::new();
         write_row(&mut output, header, &col_widths);
@@ -71,7 +72,7 @@ impl Rule for TableRule {
 
 /// Handles `<thead>`, `<tbody>`, `<tfoot>` — transparent passthrough.
 #[derive(Debug, Clone, Copy)]
-pub struct TableSectionRule;
+pub(crate) struct TableSectionRule;
 
 impl Rule for TableSectionRule {
     fn tags(&self) -> &'static [&'static str] {
@@ -85,7 +86,7 @@ impl Rule for TableSectionRule {
 
 /// Handles `<tr>` — transparent passthrough.
 #[derive(Debug, Clone, Copy)]
-pub struct TableRowRule;
+pub(crate) struct TableRowRule;
 
 impl Rule for TableRowRule {
     fn tags(&self) -> &'static [&'static str] {
@@ -99,7 +100,7 @@ impl Rule for TableRowRule {
 
 /// Handles `<td>` and `<th>` — transparent passthrough.
 #[derive(Debug, Clone, Copy)]
-pub struct TableCellRule;
+pub(crate) struct TableCellRule;
 
 impl Rule for TableCellRule {
     fn tags(&self) -> &'static [&'static str] {
@@ -152,17 +153,17 @@ fn collect_rows(table: &ElementRef<'_>) -> Vec<TableRow> {
 /// Recursively collects rows from table sections (`<thead>`, `<tbody>`, `<tfoot>`).
 fn collect_rows_recursive(parent: &ElementRef<'_>, rows: &mut Vec<TableRow>) {
     for child in parent.children() {
-        if let Some(el) = child.value().as_element() {
-            let tag = el.name();
-            if tag == "tr" {
-                if let Some(tr) = ElementRef::wrap(child) {
-                    rows.push(collect_cells(&tr));
-                }
-            } else if matches!(tag, "thead" | "tbody" | "tfoot")
-                && let Some(section) = ElementRef::wrap(child)
-            {
-                collect_rows_recursive(&section, rows);
-            }
+        let Some(el) = child.value().as_element() else {
+            continue;
+        };
+        let Some(el_ref) = ElementRef::wrap(child) else {
+            continue;
+        };
+        let tag = el.name();
+        if tag == "tr" {
+            rows.push(collect_cells(&el_ref));
+        } else if matches!(tag, "thead" | "tbody" | "tfoot") {
+            collect_rows_recursive(&el_ref, rows);
         }
     }
 }
@@ -177,20 +178,22 @@ fn collect_cells(tr: &ElementRef<'_>) -> TableRow {
         .is_some_and(|e| e.name() == "thead");
 
     for child in tr.children() {
-        if let Some(el) = child.value().as_element() {
-            let tag = el.name();
-            if tag == "td" || tag == "th" {
-                if tag == "td" {
-                    all_th = false;
-                }
-                let alignment = parse_alignment(el.attr("align"), el.attr("style"));
-                let text = dom::collect_text(&child);
-                cells.push(TableCell {
-                    text: text.trim().replace('\n', " "),
-                    alignment,
-                });
-            }
+        let Some(el) = child.value().as_element() else {
+            continue;
+        };
+        let tag = el.name();
+        if tag != "td" && tag != "th" {
+            continue;
         }
+        if tag == "td" {
+            all_th = false;
+        }
+        let alignment = parse_alignment(el.attr("align"), el.attr("style"));
+        let text = dom::collect_text(&child);
+        cells.push(TableCell {
+            text: text.trim().replace('\n', " "),
+            alignment,
+        });
     }
 
     TableRow {

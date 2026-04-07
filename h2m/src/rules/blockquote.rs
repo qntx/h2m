@@ -7,7 +7,7 @@ use crate::converter::{Action, Rule};
 
 /// Handles `<blockquote>` elements, including nested blockquotes.
 #[derive(Debug, Clone, Copy)]
-pub struct Blockquote;
+pub(super) struct Blockquote;
 
 impl Rule for Blockquote {
     fn tags(&self) -> &'static [&'static str] {

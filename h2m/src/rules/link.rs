@@ -11,7 +11,7 @@ use crate::options::{LinkReferenceStyle, LinkStyle};
 
 /// Handles `<a>` elements with support for inline and reference-style links.
 #[derive(Debug, Clone, Copy)]
-pub struct Link;
+pub(super) struct Link;
 
 impl Rule for Link {
     fn tags(&self) -> &'static [&'static str] {

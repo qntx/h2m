@@ -1,4 +1,16 @@
+#![cfg(test)]
 //! General tests: HR, BR, iframe, escaping, builder, edge cases.
+
+use ego_tree as _;
+#[cfg(feature = "scrape")]
+use reqwest as _;
+use scraper as _;
+#[cfg(feature = "scrape")]
+use serde as _;
+use thiserror as _;
+#[cfg(feature = "scrape")]
+use tokio as _;
+use url as _;
 
 mod common;
 
@@ -92,7 +104,7 @@ fn markdown_special_chars_escaped_in_text() {
 #[test]
 fn builder_keep_tags_preserves_html() {
     let c = Converter::builder()
-        .use_plugin(h2m::rules::CommonMark)
+        .use_plugin(&h2m::rules::CommonMark)
         .keep(&["custom-tag"])
         .build();
     let md = c.convert("<p>before</p><custom-tag>inside</custom-tag><p>after</p>");
@@ -104,7 +116,7 @@ fn builder_keep_tags_preserves_html() {
 #[test]
 fn builder_remove_tags_strips_content() {
     let c = Converter::builder()
-        .use_plugin(h2m::rules::CommonMark)
+        .use_plugin(&h2m::rules::CommonMark)
         .remove(&["aside"])
         .build();
     let md = c.convert("<p>before</p><aside>sidebar</aside><p>after</p>");
@@ -115,7 +127,7 @@ fn builder_remove_tags_strips_content() {
 #[test]
 fn builder_default_options_produce_commonmark() {
     let c = Converter::builder()
-        .use_plugin(h2m::rules::CommonMark)
+        .use_plugin(&h2m::rules::CommonMark)
         .build();
     let md = c.convert("<h1>Title</h1><p><strong>bold</strong></p><ul><li>item</li></ul>");
     assert_eq!(md, "# Title\n\n**bold**\n\n- item");
@@ -179,14 +191,17 @@ fn heading_inside_link_becomes_bold() {
 
 #[test]
 fn convert_is_infallible() {
-    let _: String = convert("<h1>test</h1>");
+    _ = convert("<h1>test</h1>");
 }
 
 #[test]
-#[allow(clippy::unwrap_used)]
+#[allow(
+    clippy::unwrap_used,
+    reason = "test verifies infallible read from byte slice"
+)]
 fn convert_reader_from_byte_slice() {
     let c = Converter::builder()
-        .use_plugin(h2m::rules::CommonMark)
+        .use_plugin(&h2m::rules::CommonMark)
         .build();
     let md = c.convert_reader(&b"<h1>Hello</h1>"[..]).unwrap();
     assert_eq!(md, "# Hello");

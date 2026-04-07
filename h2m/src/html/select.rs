@@ -22,7 +22,7 @@ pub fn select(html: &str, selector: &str) -> String {
 
 /// Applies a CSS selector to a pre-parsed document, returning matched inner
 /// HTML or the `original` string if nothing matches.
-pub fn select_doc(doc: &Html, original: &str, selector: &str) -> String {
+pub(crate) fn select_doc(doc: &Html, original: &str, selector: &str) -> String {
     collect_inner_html(doc, selector).unwrap_or_else(|| original.to_owned())
 }
 

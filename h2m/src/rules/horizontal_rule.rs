@@ -14,7 +14,7 @@ const HEADING_TAGS: &[&str] = &["h1", "h2", "h3", "h4", "h5", "h6"];
 /// Renders a thematic break, but suppresses it when the `<hr>` appears inside
 /// a heading (which would look weird: `## --- Heading`).
 #[derive(Debug, Clone, Copy)]
-pub struct HorizontalRule;
+pub(super) struct HorizontalRule;
 
 impl Rule for HorizontalRule {
     fn tags(&self) -> &'static [&'static str] {

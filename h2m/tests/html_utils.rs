@@ -1,6 +1,17 @@
+#![cfg(test)]
 //! HTML utility function tests (`extract_links`, `readable_content`, `strip_noise`).
 
+use ego_tree as _;
 use pretty_assertions::assert_eq;
+#[cfg(feature = "scrape")]
+use reqwest as _;
+use scraper as _;
+#[cfg(feature = "scrape")]
+use serde as _;
+use thiserror as _;
+#[cfg(feature = "scrape")]
+use tokio as _;
+use url as _;
 
 #[test]
 fn extract_links_with_base_resolves_relative() {

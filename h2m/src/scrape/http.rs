@@ -86,7 +86,7 @@ fn extract_meta_refresh_raw(html: &str) -> Option<String> {
     let content_pos = lower[meta_pos..].find("content")?;
     let after_content = &html[meta_pos + content_pos..];
     let quote = after_content.find(['\"', '\''])?;
-    let delim = after_content.as_bytes()[quote];
+    let delim = *after_content.as_bytes().get(quote)?;
     let value_start = quote + 1;
     let value_end = after_content[value_start..].find(delim as char)? + value_start;
     let content = &after_content[value_start..value_end];

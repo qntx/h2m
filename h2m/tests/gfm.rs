@@ -1,7 +1,18 @@
+#![cfg(test)]
 //! GFM extension tests (strikethrough, tables, task lists).
 
+use ego_tree as _;
 use h2m::convert_gfm;
 use pretty_assertions::assert_eq;
+#[cfg(feature = "scrape")]
+use reqwest as _;
+use scraper as _;
+#[cfg(feature = "scrape")]
+use serde as _;
+use thiserror as _;
+#[cfg(feature = "scrape")]
+use tokio as _;
+use url as _;
 
 #[test]
 fn gfm_del_tag() {
@@ -28,11 +39,11 @@ fn gfm_table_basic_structure() {
     let md = convert_gfm(html);
     let lines: Vec<&str> = md.lines().collect();
     assert!(lines.len() >= 3, "table should have at least 3 lines");
-    assert!(lines[0].contains("Name"));
-    assert!(lines[0].contains("Age"));
-    assert!(lines[1].contains("---"));
-    assert!(lines[2].contains("Alice"));
-    assert!(lines[2].contains("30"));
+    assert!(lines.first().is_some_and(|l| l.contains("Name")));
+    assert!(lines.first().is_some_and(|l| l.contains("Age")));
+    assert!(lines.get(1).is_some_and(|l| l.contains("---")));
+    assert!(lines.get(2).is_some_and(|l| l.contains("Alice")));
+    assert!(lines.get(2).is_some_and(|l| l.contains("30")));
 }
 
 #[test]
@@ -43,7 +54,7 @@ fn gfm_table_alignment() {
     let md = convert_gfm(html);
     let lines: Vec<&str> = md.lines().collect();
     assert!(lines.len() >= 2, "table should have a separator row");
-    let sep = lines[1];
+    let sep = lines.get(1).copied().unwrap_or("");
     assert!(sep.contains(":--"), "left alignment marker");
     assert!(
         sep.contains(":-") && sep.contains("-:"),
@@ -61,8 +72,16 @@ fn gfm_task_list_checked_and_unchecked() {
     let md = convert_gfm(html);
     let lines: Vec<&str> = md.lines().collect();
     assert_eq!(lines.len(), 2);
-    assert!(lines[0].contains("[x]") && lines[0].contains("done"));
-    assert!(lines[1].contains("[ ]") && lines[1].contains("todo"));
+    assert!(
+        lines
+            .first()
+            .is_some_and(|l| l.contains("[x]") && l.contains("done"))
+    );
+    assert!(
+        lines
+            .get(1)
+            .is_some_and(|l| l.contains("[ ]") && l.contains("todo"))
+    );
 }
 
 #[test]

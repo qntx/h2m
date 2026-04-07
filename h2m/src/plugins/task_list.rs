@@ -8,7 +8,7 @@ use crate::dom;
 
 /// Handles `<input type="checkbox">` elements inside list items.
 #[derive(Debug, Clone, Copy)]
-pub struct TaskList;
+pub(crate) struct TaskList;
 
 impl Rule for TaskList {
     fn tags(&self) -> &'static [&'static str] {

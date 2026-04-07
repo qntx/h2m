@@ -62,7 +62,7 @@ fn extract_title_doc(doc: &Html) -> Option<String> {
 /// Extracts all `<a href>` link URLs from a pre-parsed document.
 ///
 /// When `base` is provided, relative URLs are resolved to absolute.
-pub fn extract_links_doc(doc: &Html, base: Option<&url::Url>) -> Vec<String> {
+pub(crate) fn extract_links_doc(doc: &Html, base: Option<&url::Url>) -> Vec<String> {
     let Ok(sel) = scraper::Selector::parse("a[href]") else {
         return Vec::new();
     };

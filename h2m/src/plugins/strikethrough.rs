@@ -8,7 +8,7 @@ use crate::dom;
 
 /// Handles strikethrough elements.
 #[derive(Debug, Clone, Copy)]
-pub struct Strikethrough;
+pub(crate) struct Strikethrough;
 
 impl Rule for Strikethrough {
     fn tags(&self) -> &'static [&'static str] {

@@ -11,7 +11,7 @@ use crate::options::CodeBlockStyle;
 
 /// Handles `<pre>` elements (typically containing a `<code>` child).
 #[derive(Debug, Clone, Copy)]
-pub struct CodeBlock;
+pub(super) struct CodeBlock;
 
 impl Rule for CodeBlock {
     fn tags(&self) -> &'static [&'static str] {
@@ -64,7 +64,7 @@ impl CodeBlock {
             if i > 0 {
                 result.push('\n');
             }
-            let _ = write!(result, "    {line}");
+            _ = write!(result, "    {line}");
         }
         result.push_str("\n\n");
         Action::Replace(result)
@@ -75,25 +75,29 @@ impl CodeBlock {
 /// `class` attribute (e.g., `class="language-rust"` or `class="lang-js"`).
 fn detect_language(pre: &ElementRef<'_>) -> Option<String> {
     for child in pre.children() {
-        if let Some(el) = child.value().as_element()
-            && el.name() == "code"
-            && let Some(class) = el.attr("class")
-        {
-            for cls in class.split_whitespace() {
-                if let Some(lang) = cls
-                    .strip_prefix("language-")
-                    .or_else(|| cls.strip_prefix("lang-"))
-                {
-                    return Some(lang.to_owned());
-                }
-            }
-            // Fall back to the first class as the language.
-            return class
-                .split_whitespace()
-                .next()
-                .filter(|f| !f.is_empty())
-                .map(str::to_owned);
+        let Some(el) = child.value().as_element() else {
+            continue;
+        };
+        if el.name() != "code" {
+            continue;
         }
+        let Some(class) = el.attr("class") else {
+            continue;
+        };
+        for cls in class.split_whitespace() {
+            if let Some(lang) = cls
+                .strip_prefix("language-")
+                .or_else(|| cls.strip_prefix("lang-"))
+            {
+                return Some(lang.to_owned());
+            }
+        }
+        // Fall back to the first class as the language.
+        return class
+            .split_whitespace()
+            .next()
+            .filter(|f| !f.is_empty())
+            .map(str::to_owned);
     }
     None
 }

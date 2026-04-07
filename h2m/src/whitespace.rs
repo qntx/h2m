@@ -6,7 +6,7 @@ use std::borrow::Cow;
 ///
 /// This mirrors browser rendering of normal-flow text content. Returns a
 /// borrowed [`Cow`] when no collapsing is needed.
-pub fn collapse_whitespace(text: &str) -> Cow<'_, str> {
+pub(crate) fn collapse_whitespace(text: &str) -> Cow<'_, str> {
     // Fast path (byte-level): detects the common ASCII-only case without
     // decoding chars. Returns `false` only when we can *prove* no collapsing
     // is needed; conservatively returns `true` for non-ASCII bytes (which
@@ -40,20 +40,20 @@ pub fn collapse_whitespace(text: &str) -> Cow<'_, str> {
     let mut changed = false;
 
     for c in text.chars() {
-        if c.is_whitespace() {
-            if prev_ws {
-                changed = true;
-            } else {
-                result.push(' ');
-                if c != ' ' {
-                    changed = true;
-                }
-            }
-            prev_ws = true;
-        } else {
+        if !c.is_whitespace() {
             result.push(c);
             prev_ws = false;
+            continue;
         }
+        if prev_ws {
+            changed = true;
+        } else {
+            result.push(' ');
+            if c != ' ' {
+                changed = true;
+            }
+        }
+        prev_ws = true;
     }
 
     if changed {
@@ -70,7 +70,7 @@ pub fn collapse_whitespace(text: &str) -> Cow<'_, str> {
 ///   (2+ trailing spaces before a newline are preserved as exactly two spaces).
 /// - Strips leading newlines and trailing whitespace from the final result,
 ///   while preserving indentation on the first content line.
-pub fn clean_output(text: &str) -> String {
+pub(crate) fn clean_output(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut consecutive_newlines = 0u32;
 

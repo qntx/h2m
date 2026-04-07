@@ -24,7 +24,11 @@
 //! h2m https://example.com -o output.md
 //! ```
 
-#![allow(clippy::print_stderr, clippy::shadow_reuse)]
+#![allow(
+    clippy::print_stderr,
+    clippy::shadow_reuse,
+    reason = "CLI binary uses stderr for diagnostics and shadow rebinding for option building"
+)]
 
 mod cli;
 mod convert;

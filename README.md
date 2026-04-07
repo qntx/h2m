@@ -126,8 +126,8 @@ use h2m::rules::CommonMark;
 
 let converter = Converter::builder()
     .options(Options::default())
-    .use_plugin(CommonMark)
-    .use_plugin(Gfm)
+    .use_plugin(&CommonMark)
+    .use_plugin(&Gfm)
     .domain("example.com")
     .build();
 
