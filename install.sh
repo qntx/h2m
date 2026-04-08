@@ -8,7 +8,7 @@
 
 set -eu
 
-REPO="qntx-labs/h2m"
+REPO="qntx/h2m"
 BIN="h2m"
 
 BIN_UPPER=$(echo "$BIN" | tr '[:lower:]' '[:upper:]')
