@@ -336,37 +336,6 @@ let md = converter.convert("<p>This is <mark>important</mark></p>");
 assert!(md.contains("==important=="));
 ```
 
-## Feature Flags
-
-**`h2m`** crate:
-
-- `scrape` — async HTTP scraping (adds `tokio`, `reqwest`, `serde`)
-
-**`h2m-search`** crate:
-
-- `searxng` (default) — SearXNG provider
-- `brave` — Brave Search API provider
-- `tavily` — Tavily API provider
-- `all` — all providers
-
-**`h2m-cli`** binary:
-
-- `search` (default) — enables the `search` subcommand
-- `all-providers` — bundles every provider (used for release builds)
-
-## Migration from 0.5
-
-v0.6 introduced a subcommand tree. Update every invocation:
-
-| Before (0.5)                | After (0.6)                       |
-| --------------------------- | --------------------------------- |
-| `h2m https://example.com`   | `h2m convert https://example.com` |
-| `h2m --gfm page.html`       | `h2m convert --gfm page.html`     |
-| `curl -s URL \| h2m -r`     | `curl -s URL \| h2m convert -r`   |
-| _(new)_                     | `h2m search "query" --scrape`     |
-
-All `convert` flags are unchanged; only the leading subcommand is required.
-
 ## License
 
 Licensed under either of:
