@@ -1,0 +1,69 @@
+//! # h2m-search
+//!
+//! Web search provider abstraction for [`h2m`](https://crates.io/crates/h2m).
+//!
+//! Provides a unified interface over multiple search backends. The design
+//! mirrors the Firecrawl `/search` endpoint — default results carry only
+//! `title`/`url`/`description`, while the companion CLI `--scrape` flag
+//! funnels hits through the existing [`h2m::scrape::Scraper`] pipeline.
+//!
+//! ## Providers
+//!
+//! Each provider lives behind a Cargo feature so binaries can opt into exactly
+//! the backends they need:
+//!
+//! | Feature   | Provider | Requires              | Default |
+//! | --------- | -------- | --------------------- | ------- |
+//! | `searxng` | `SearXNG`  | `H2M_SEARXNG_URL`     | yes     |
+//! | `brave`   | Brave    | `BRAVE_API_KEY`       | no      |
+//! | `tavily`  | Tavily   | `TAVILY_API_KEY`      | no      |
+//! | `all`     | —        | aggregates the above  | no      |
+//!
+//! ## Quick start
+//!
+//! ```no_run
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! use h2m_search::{SearchClient, SearchQuery};
+//!
+//! let client = SearchClient::from_env()?;
+//! let response = client
+//!     .search(&SearchQuery::new("rust async trait").with_limit(5))
+//!     .await?;
+//!
+//! for hit in &response.web {
+//!     println!("{} — {}", hit.title, hit.url);
+//! }
+//! # Ok(())
+//! # }
+//! ```
+
+#![deny(unsafe_code)]
+
+#[cfg(not(any(feature = "searxng", feature = "brave", feature = "tavily")))]
+compile_error!(
+    "h2m-search requires at least one provider feature: 'searxng' (default), 'brave', or 'tavily'"
+);
+
+mod client;
+mod error;
+mod query;
+mod response;
+
+pub mod providers;
+
+#[cfg(feature = "brave")]
+pub use client::ENV_BRAVE_API_KEY;
+#[cfg(feature = "searxng")]
+pub use client::ENV_SEARXNG_URL;
+#[cfg(feature = "tavily")]
+pub use client::ENV_TAVILY_API_KEY;
+pub use client::{ENV_PROVIDER, SearchClient, SearchClientBuilder};
+pub use error::SearchError;
+#[cfg(test)]
+use pretty_assertions as _;
+pub use query::{SafeSearch, SearchQuery, SearchSource, TimeRange};
+pub use response::{SearchHit, SearchResponse};
+#[cfg(test)]
+use serde_json as _;
+#[cfg(test)]
+use wiremock as _;

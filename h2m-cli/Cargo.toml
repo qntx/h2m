@@ -13,8 +13,14 @@ readme.workspace = true
 name = "h2m"
 path = "src/main.rs"
 
+[features]
+default = ["search"]
+search = ["dep:h2m-search"]
+all-providers = ["search", "h2m-search/all"]
+
 [dependencies]
 h2m = { workspace = true, features = ["scrape"] }
+h2m-search = { workspace = true, optional = true }
 clap.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

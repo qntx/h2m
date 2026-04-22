@@ -1,48 +1,178 @@
 //! CLI argument definitions and enum mappings.
+//!
+//! The CLI is organised as a subcommand tree:
+//!
+//! - `h2m convert <INPUT>…` — HTML-to-Markdown conversion (URL, file, stdin)
+//! - `h2m search <QUERY>` — web search with optional scrape-to-Markdown
+//!   (available when compiled with the `search` feature)
+//!
+//! Formatting, content-extraction, and HTTP flags are grouped into reusable
+//! argument structs (`FormatArgs`, `ContentArgs`, `HttpArgs`) that are
+//! `#[command(flatten)]`-ed into each subcommand, so both `convert` and
+//! `search --scrape` share the exact same options.
 
 use std::path::PathBuf;
 
-use clap::{Parser, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
-/// Convert HTML to Markdown.
+/// HTML-to-Markdown converter with optional web search.
 ///
-/// INPUT can be one or more URLs, file paths, or "-" for stdin.
-/// When omitted, reads from stdin. Use --json for structured output.
+/// Use `h2m <COMMAND> --help` for per-subcommand details.
 #[derive(Parser, Debug)]
-#[command(name = "h2m", version, about, long_about = None)]
+#[command(name = "h2m", version, about, long_about = None, propagate_version = true)]
+pub(crate) struct Cli {
+    /// Subcommand to execute.
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+/// Top-level subcommand.
+#[derive(Subcommand, Debug)]
+pub(crate) enum Command {
+    /// Convert HTML to Markdown from URLs, files, or stdin.
+    Convert(ConvertArgs),
+
+    /// Search the web and optionally scrape each result to Markdown.
+    #[cfg(feature = "search")]
+    Search(SearchArgs),
+}
+
+/// Arguments for the `convert` subcommand.
+#[derive(Args, Debug)]
 #[allow(
     clippy::struct_excessive_bools,
     reason = "CLI flags are naturally boolean"
 )]
-pub(crate) struct Cli {
+pub(crate) struct ConvertArgs {
     /// URL(s), file path(s), or "-" for stdin.
     pub input: Vec<String>,
 
-    /// JSON output mode for programmatic/agent consumption.
-    /// Single input produces a JSON object; multiple inputs produce NDJSON.
-    #[arg(long, global = true)]
-    pub json: bool,
-
-    /// Extract all links from the page (included in JSON output).
-    #[arg(long)]
-    pub extract_links: bool,
-
-    /// Read URLs from a file (one per line).
+    /// Read URLs from a file (one per line, `#` comments supported).
     #[arg(long, value_name = "FILE")]
     pub urls: Option<PathBuf>,
 
-    /// Maximum concurrent requests for batch mode.
-    #[arg(short = 'j', long, default_value_t = 4)]
-    pub concurrency: usize,
+    /// JSON output: single input → pretty JSON, multiple → NDJSON stream.
+    #[arg(long)]
+    pub json: bool,
 
-    /// Delay between requests in milliseconds (rate limiting).
-    #[arg(long, default_value_t = 0)]
-    pub delay: u64,
+    /// Extract every `<a href>` on the page (included in JSON output).
+    #[arg(long)]
+    pub extract_links: bool,
 
-    /// Request timeout in seconds.
-    #[arg(long, default_value_t = 30)]
-    pub timeout: u64,
+    /// Base domain for resolving relative URLs (auto-detected for URL input).
+    #[arg(long)]
+    pub domain: Option<String>,
 
+    /// Output file path (stdout if omitted, ignored in batch mode).
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+
+    /// Content-extraction selection.
+    #[command(flatten)]
+    pub content: ContentArgs,
+
+    /// Markdown formatting options.
+    #[command(flatten)]
+    pub format: FormatArgs,
+
+    /// HTTP client options.
+    #[command(flatten)]
+    pub http: HttpArgs,
+}
+
+/// Arguments for the `search` subcommand.
+#[cfg(feature = "search")]
+#[derive(Args, Debug)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "CLI flags are naturally boolean"
+)]
+pub(crate) struct SearchArgs {
+    /// The search query.
+    pub query: String,
+
+    /// Search provider (`searxng` is the default).
+    #[arg(short = 'p', long, default_value = "searxng")]
+    pub provider: String,
+
+    /// Maximum number of results per source (1..=100).
+    #[arg(long, default_value_t = 10)]
+    pub limit: usize,
+
+    /// Result sources to request (comma-separated).
+    #[arg(long, value_enum, value_delimiter = ',', default_value = "web")]
+    pub sources: Vec<SourceArg>,
+
+    /// Time-range filter.
+    #[arg(long, value_enum)]
+    pub time_range: Option<TimeRangeArg>,
+
+    /// ISO 3166-1 alpha-2 country code (e.g. `us`, `cn`).
+    #[arg(long)]
+    pub country: Option<String>,
+
+    /// ISO 639-1 language code (e.g. `en`, `zh`).
+    #[arg(long)]
+    pub language: Option<String>,
+
+    /// Safe-search filter level.
+    #[arg(long, value_enum, default_value_t = SafeSearchArg::Moderate)]
+    pub safesearch: SafeSearchArg,
+
+    /// `SearXNG` base URL (overrides `H2M_SEARXNG_URL`).
+    #[arg(long)]
+    pub searxng_url: Option<String>,
+
+    /// After search, scrape each hit and emit a `ScrapeResult` per line (NDJSON).
+    #[arg(long)]
+    pub scrape: bool,
+
+    /// JSON output (always on in scrape mode; pretty in non-scrape mode).
+    #[arg(long)]
+    pub json: bool,
+
+    /// Output file path (stdout if omitted).
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+
+    /// Content-extraction selection (applied when `--scrape` is set).
+    #[command(flatten)]
+    pub content: ContentArgs,
+
+    /// Markdown formatting options (applied when `--scrape` is set).
+    #[command(flatten)]
+    pub format: FormatArgs,
+
+    /// HTTP client options for the scraping stage.
+    #[command(flatten)]
+    pub http: HttpArgs,
+
+    /// Extract links from each scraped page (when `--scrape` is set).
+    #[arg(long)]
+    pub extract_links: bool,
+}
+
+/// Content-extraction options shared by `convert` and `search --scrape`.
+#[derive(Args, Debug, Clone)]
+pub(crate) struct ContentArgs {
+    /// CSS selector to extract before conversion. Mutually exclusive with
+    /// `--readable`.
+    #[arg(short, long, conflicts_with = "readable")]
+    pub selector: Option<String>,
+
+    /// Smart readable extraction (semantic selectors → noise stripping).
+    /// Mutually exclusive with `--selector`.
+    #[arg(short = 'r', long, conflicts_with = "selector")]
+    pub readable: bool,
+}
+
+/// Markdown formatting options shared by `convert` and `search --scrape`.
+#[derive(Args, Debug, Clone)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "formatting toggles are naturally boolean"
+)]
+pub(crate) struct FormatArgs {
     /// Enable GFM extensions (tables, strikethrough, task lists).
     #[arg(short, long)]
     pub gfm: bool,
@@ -75,39 +205,33 @@ pub(crate) struct Cli {
     #[arg(long, value_enum, default_value_t = LinkStyleArg::Inlined)]
     pub link_style: LinkStyleArg,
 
-    /// Reference link style (only used with --link-style=referenced).
+    /// Reference link style (only used with `--link-style=referenced`).
     #[arg(long, value_enum, default_value_t = LinkRefArg::Full)]
     pub link_ref: LinkRefArg,
 
     /// Disable markdown character escaping.
     #[arg(long)]
     pub no_escape: bool,
+}
 
-    /// Base domain for resolving relative URLs (e.g. "example.com").
-    /// Auto-detected when input is a URL.
-    #[arg(long)]
-    pub domain: Option<String>,
+/// HTTP client options shared by `convert` and `search --scrape`.
+#[derive(Args, Debug, Clone)]
+pub(crate) struct HttpArgs {
+    /// Maximum concurrent HTTP requests.
+    #[arg(short = 'j', long, default_value_t = 4)]
+    pub concurrency: usize,
 
-    /// CSS selector to extract before converting (e.g. "article", "main",
-    /// "#content"). Mutually exclusive with --readable.
-    #[arg(short, long, conflicts_with = "readable")]
-    pub selector: Option<String>,
+    /// Delay between requests in milliseconds (rate limiting).
+    #[arg(long, default_value_t = 0)]
+    pub delay: u64,
 
-    /// Smart readable content extraction.
-    /// Phase 1: tries semantic selectors (article, main, [role="main"], …).
-    /// Phase 2: strips noise elements (nav, footer, aside, …) if no
-    /// semantic wrapper is found.
-    /// Mutually exclusive with --selector.
-    #[arg(short = 'r', long, conflicts_with = "selector")]
-    pub readable: bool,
+    /// Request timeout in seconds.
+    #[arg(long, default_value_t = 30)]
+    pub timeout: u64,
 
-    /// Custom User-Agent header for HTTP requests.
+    /// Custom `User-Agent` header.
     #[arg(long)]
     pub user_agent: Option<String>,
-
-    /// Output file (writes to stdout if omitted, ignored in batch mode).
-    #[arg(short, long)]
-    pub output: Option<PathBuf>,
 }
 
 /// Heading rendering style.
@@ -263,19 +387,91 @@ impl From<StrongStyle> for h2m::StrongDelimiter {
     }
 }
 
-/// Builds `h2m::Options` from CLI arguments.
-pub(crate) fn build_options(cli: &Cli) -> h2m::Options {
-    let mut opts = h2m::Options::default()
-        .with_heading_style(cli.heading_style.into())
-        .with_bullet_marker(cli.bullet.into())
-        .with_fence(cli.fence.into())
-        .with_em_delimiter(cli.em.into())
-        .with_strong_delimiter(cli.strong.into())
-        .with_horizontal_rule(cli.hr.into())
-        .with_link_style(cli.link_style.into())
-        .with_link_reference_style(cli.link_ref.into());
+/// Search source category.
+#[cfg(feature = "search")]
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum SourceArg {
+    /// General web results.
+    Web,
+    /// News articles.
+    News,
+    /// Image results.
+    Images,
+}
 
-    if cli.no_escape {
+#[cfg(feature = "search")]
+impl From<SourceArg> for h2m_search::SearchSource {
+    fn from(s: SourceArg) -> Self {
+        match s {
+            SourceArg::Web => Self::Web,
+            SourceArg::News => Self::News,
+            SourceArg::Images => Self::Images,
+        }
+    }
+}
+
+/// Time-range filter for search.
+#[cfg(feature = "search")]
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum TimeRangeArg {
+    /// Past 24 hours.
+    Day,
+    /// Past 7 days.
+    Week,
+    /// Past 30 days.
+    Month,
+    /// Past 12 months.
+    Year,
+}
+
+#[cfg(feature = "search")]
+impl From<TimeRangeArg> for h2m_search::TimeRange {
+    fn from(t: TimeRangeArg) -> Self {
+        match t {
+            TimeRangeArg::Day => Self::Day,
+            TimeRangeArg::Week => Self::Week,
+            TimeRangeArg::Month => Self::Month,
+            TimeRangeArg::Year => Self::Year,
+        }
+    }
+}
+
+/// Safe-search level.
+#[cfg(feature = "search")]
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum SafeSearchArg {
+    /// No filtering.
+    Off,
+    /// Moderate filtering (default).
+    Moderate,
+    /// Strict filtering.
+    Strict,
+}
+
+#[cfg(feature = "search")]
+impl From<SafeSearchArg> for h2m_search::SafeSearch {
+    fn from(s: SafeSearchArg) -> Self {
+        match s {
+            SafeSearchArg::Off => Self::Off,
+            SafeSearchArg::Moderate => Self::Moderate,
+            SafeSearchArg::Strict => Self::Strict,
+        }
+    }
+}
+
+/// Builds `h2m::Options` from the shared [`FormatArgs`].
+pub(crate) fn build_options(format: &FormatArgs) -> h2m::Options {
+    let mut opts = h2m::Options::default()
+        .with_heading_style(format.heading_style.into())
+        .with_bullet_marker(format.bullet.into())
+        .with_fence(format.fence.into())
+        .with_em_delimiter(format.em.into())
+        .with_strong_delimiter(format.strong.into())
+        .with_horizontal_rule(format.hr.into())
+        .with_link_style(format.link_style.into())
+        .with_link_reference_style(format.link_ref.into());
+
+    if format.no_escape {
         opts = opts.with_escape_mode(h2m::EscapeMode::Disabled);
     }
 

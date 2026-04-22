@@ -1,27 +1,34 @@
 //! h2m — HTML to Markdown converter CLI.
 //!
-//! Supports URLs, files, and stdin as input sources.
+//! The CLI exposes two subcommands:
+//!
+//! - `h2m convert <INPUT>…` — convert HTML from URLs, files, or stdin
+//! - `h2m search <QUERY>` — run a web search, optionally piping results
+//!   through the existing scrape pipeline (requires the `search` feature)
 //!
 //! # Examples
 //!
 //! ```sh
-//! # Convert a URL directly
-//! h2m https://example.com
+//! # Convert a URL
+//! h2m convert https://example.com
 //!
-//! # Convert a local file with GFM extensions
-//! h2m --gfm page.html
+//! # Convert a local file with GFM
+//! h2m convert --gfm page.html
 //!
 //! # Pipe from curl, extract only <article>
-//! curl -s https://blog.example.com/post | h2m --selector article
+//! curl -s https://blog.example.com/post | h2m convert --selector article
 //!
-//! # JSON output for agent consumption
-//! h2m --json https://example.com
+//! # JSON for agent consumption
+//! h2m convert --json https://example.com
 //!
-//! # Batch convert multiple URLs (NDJSON output)
-//! h2m --json url1 url2 url3
+//! # Batch convert (NDJSON streaming)
+//! h2m convert --json url1 url2 url3
 //!
-//! # Save output to a file
-//! h2m https://example.com -o output.md
+//! # Web search (requires H2M_SEARXNG_URL env var for the default provider)
+//! h2m search "rust async trait" --limit 5
+//!
+//! # Search + scrape each hit to Markdown (NDJSON)
+//! h2m search "rust async" --scrape --gfm --readable
 //! ```
 
 #![allow(
@@ -34,23 +41,42 @@ mod cli;
 mod convert;
 mod error;
 mod output;
+#[cfg(feature = "search")]
+mod search;
 
 use std::process::ExitCode;
 
 use clap::Parser;
 
+use crate::cli::{Cli, Command};
+
 #[tokio::main]
 async fn main() -> ExitCode {
-    let cli = cli::Cli::parse();
-    match convert::run(&cli).await {
+    let cli = Cli::parse();
+    let result = match &cli.command {
+        Command::Convert(args) => convert::run(args).await,
+        #[cfg(feature = "search")]
+        Command::Search(args) => search::run(args).await,
+    };
+
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            if cli.json {
-                output::emit_json_error(&e.to_string(), e.url());
-            } else {
-                eprintln!("error: {e}");
-            }
+            report_error(&cli.command, &e);
             ExitCode::FAILURE
         }
+    }
+}
+
+fn report_error(command: &Command, err: &error::CliError) {
+    let is_json = match command {
+        Command::Convert(args) => args.json,
+        #[cfg(feature = "search")]
+        Command::Search(args) => args.json || args.scrape,
+    };
+    if is_json {
+        output::emit_json_error(&err.to_string(), err.url());
+    } else {
+        eprintln!("error: {err}");
     }
 }

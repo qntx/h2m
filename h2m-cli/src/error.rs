@@ -7,6 +7,11 @@ pub(crate) enum CliError {
     #[error("{0}")]
     Scrape(#[from] h2m::scrape::ScrapeError),
 
+    /// Web search error (only compiled in with the `search` feature).
+    #[cfg(feature = "search")]
+    #[error("{0}")]
+    Search(#[from] h2m_search::SearchError),
+
     /// I/O error (stdin read, file read/write).
     #[error("{0}")]
     Io(#[from] std::io::Error),
@@ -26,6 +31,8 @@ impl CliError {
     pub(crate) fn url(&self) -> Option<&str> {
         match self {
             Self::Scrape(e) => e.url(),
+            #[cfg(feature = "search")]
+            Self::Search(_) => None,
             Self::Io(_) => None,
             Self::Other { url, .. } => url.as_deref(),
         }

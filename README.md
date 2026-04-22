@@ -19,9 +19,9 @@
 [rust-badge]: https://img.shields.io/badge/rust-edition%202024-orange.svg
 [rust-url]: https://doc.rust-lang.org/edition-guide/
 
-**Fast, extensible HTML-to-Markdown converter for Rust — CommonMark + GFM, plugin architecture, zero `unsafe`.**
+**Fast, extensible HTML-to-Markdown converter with optional web search — CommonMark + GFM, plugin architecture.**
 
-H2M converts HTML into clean Markdown with full CommonMark compliance and GitHub Flavored Markdown extensions. It uses a plugin-based rule system, supports reference-style links, relative URL resolution, and ships with an async CLI powered by `tokio` for high-concurrency batch scraping.
+H2M converts HTML into clean Markdown with full CommonMark compliance and GitHub Flavored Markdown extensions. It uses a plugin-based rule system, supports reference-style links, relative URL resolution, and ships with an async CLI that can also **search the web** and pipe results through the same conversion pipeline (compatible with SearXNG, Brave Search, and Tavily).
 
 <p align="center">
   <img src="demo.gif" alt="H2M CLI Demo"/>
@@ -49,44 +49,91 @@ Or via Cargo:
 cargo install h2m-cli
 ```
 
-### CLI Usage
+### CLI Structure
+
+H2M uses a subcommand tree:
+
+```text
+h2m <COMMAND> [OPTIONS] ...
+
+Commands:
+  convert  Convert HTML to Markdown (URL, file, stdin)
+  search   Search the web and optionally scrape each hit to Markdown
+```
+
+### `convert` — HTML → Markdown
 
 ```bash
-h2m https://example.com
-h2m page.html
-curl -s https://example.com | h2m
+h2m convert https://example.com
+h2m convert page.html
+curl -s https://example.com | h2m convert
+echo '<h1>Hi</h1>' | h2m convert
 ```
 
 Content extraction:
 
 ```bash
-h2m -r https://blog.example.com/post             # smart readable
-h2m -s article https://blog.example.com/post     # CSS selector
-h2m -s '#content' https://example.com            # by ID
+h2m convert -r https://blog.example.com/post          # smart readable
+h2m convert -s article https://blog.example.com/post  # CSS selector
+h2m convert -s '#content' https://example.com         # by ID
 ```
 
-JSON output (for agents / programmatic use):
+JSON output (agents / programmatic use):
 
 ```bash
-h2m --json https://example.com                   # pretty JSON
-h2m --json --extract-links https://example.com   # with links
-h2m --json url1 url2 url3                        # NDJSON streaming
-h2m --json --urls urls.txt -j 8 --delay 100      # batch + concurrency
+h2m convert --json https://example.com                # pretty JSON
+h2m convert --json --extract-links https://example.com
+h2m convert --json url1 url2 url3                     # NDJSON streaming
+h2m convert --json --urls urls.txt -j 8 --delay 100
 ```
 
 Formatting:
 
 ```bash
-h2m --gfm https://example.com                    # tables, strikethrough, task lists
-h2m --link-style referenced page.html            # reference-style links
-h2m --heading-style setext page.html             # === / --- underlines
-h2m --user-agent "MyBot/1.0" https://example.com
-h2m -o output.md https://example.com
+h2m convert --gfm https://example.com                 # tables, strikethrough, task lists
+h2m convert --link-style referenced page.html         # reference-style links
+h2m convert --heading-style setext page.html          # === / --- underlines
+h2m convert --user-agent "MyBot/1.0" https://example.com
+h2m convert -o output.md https://example.com
+```
+
+### `search` — Web search
+
+H2M supports three search providers. Pick one via `--provider` or the
+`H2M_SEARCH_PROVIDER` environment variable:
+
+| Provider | Requires          | Free tier       | Notes                            |
+| -------- | ----------------- | --------------- | -------------------------------- |
+| SearXNG  | `H2M_SEARXNG_URL` | yes (self-host) | Default. Open-source meta-search |
+| Brave    | `BRAVE_API_KEY`   | $5/month credit | Independent index                |
+| Tavily   | `TAVILY_API_KEY`  | 1000 req/month  | AI-tuned snippets                |
+
+Pure search (returns titles/URLs/descriptions):
+
+```bash
+# Point at any SearXNG instance (self-host or public)
+export H2M_SEARXNG_URL=https://searx.example.org
+
+h2m search "rust async trait"                    # pretty JSON response
+h2m search "rust async trait" --json             # NDJSON (one hit per line)
+h2m search "rust" --limit 5 --time-range week
+h2m search "rust" --sources web,news --country us
+h2m search "rust" --provider brave               # switch provider
+```
+
+Search + scrape (runs every hit through the full `convert` pipeline,
+streams NDJSON ScrapeResults):
+
+```bash
+h2m search "rust async" --scrape                 # raw markdown per hit
+h2m search "rust async" --scrape --gfm --readable
+h2m search "rust async" --scrape --selector article
+h2m search "rust" --scrape -j 8 --timeout 20     # parallel scrape
 ```
 
 ### JSON Output
 
-Single URL produces a pretty-printed JSON object:
+**`convert` single URL** (pretty JSON):
 
 ```json
 {
@@ -106,9 +153,22 @@ Single URL produces a pretty-printed JSON object:
 }
 ```
 
-`sourceUrl` is the original request; `url` is the final URL after redirects. `links` only appears with `--extract-links`.
+**`search` response**:
 
-Multiple URLs produce NDJSON (one JSON object per line), ideal for streaming pipelines.
+```json
+{
+  "query": "rust async",
+  "provider": "searxng",
+  "web": [
+    {"title": "Rust", "url": "https://rust-lang.org", "description": "...", "engine": "duckduckgo"}
+  ],
+  "news": [],
+  "images": [],
+  "elapsedMs": 312
+}
+```
+
+Multiple inputs (convert batch, or `search --scrape`) stream NDJSON — one JSON object per line.
 
 ### Library Usage
 
@@ -119,7 +179,7 @@ assert_eq!(md, "# Hello\n\nWorld");
 ```
 
 ```rust
-// Full control with builder
+// Full control with the builder
 use h2m::{Converter, Options};
 use h2m::plugins::Gfm;
 use h2m::rules::CommonMark;
@@ -148,11 +208,9 @@ let scraper = Scraper::builder()
     .extract_links(true)
     .build()?;
 
-// Single scrape
 let result = scraper.scrape("https://example.com").await?;
 println!("{}", result.markdown);
 
-// Batch with streaming callback
 let urls = vec!["https://a.com".into(), "https://b.com".into()];
 scraper.scrape_many_streaming(&urls, |result| {
     match result {
@@ -162,44 +220,38 @@ scraper.scrape_many_streaming(&urls, |result| {
 }).await;
 ```
 
+### Web Search
+
+The `h2m-search` crate exposes the same provider abstraction the CLI uses:
+
+```rust,no_run
+use h2m_search::{SearchClient, SearchQuery};
+
+let client = SearchClient::builder()
+    .provider("searxng")
+    .searxng_url("https://searx.example.org")
+    .build()?;
+
+let response = client
+    .search(&SearchQuery::new("rust async").with_limit(5))
+    .await?;
+
+for hit in &response.web {
+    println!("{} — {}", hit.title, hit.url);
+}
+# Ok::<_, Box<dyn std::error::Error>>(())
+```
+
 ## Design
 
 - **CommonMark + GFM** — full spec compliance with tables, strikethrough, task lists, reference-style links
 - **Plugin architecture** — extend with custom rules via the `Rule` trait
 - **Async batch pipeline** — `tokio` + `reqwest`, semaphore concurrency, streaming NDJSON (`scrape` feature)
-- **JSON output** — nested camelCase metadata (title, description, language, ogImage, sourceUrl/url, statusCode, contentType, elapsedMs) for agent/programmatic consumption
-- **Smart readable extraction** — two-phase content detection: semantic selectors → noise stripping (`nav`, `footer`, `aside`, `header`, ARIA roles)
-- **Smart scraping** — configurable User-Agent, HTTP 3xx + HTML meta-refresh redirect following (including `<noscript>`-wrapped)
+- **Multi-provider search** — `SearchClient` enum with static dispatch, one Cargo feature per provider
+- **Search + scrape composition** — `search --scrape` funnels hits through the same `Scraper` pipeline, reusing all formatting / extraction flags
+- **JSON output** — nested camelCase metadata aligned with Firecrawl conventions
+- **Smart readable extraction** — two-phase content detection: semantic selectors → noise stripping
 - **Zero-copy fast paths** — `Cow<str>` escaping, zero `unsafe`, `Send + Sync`
-
-## Conversion Examples
-
-**Input HTML:**
-
-```html
-<h1>Title</h1>
-<p>A <strong>bold</strong> and <em>italic</em> paragraph with <a href="https://example.com">a link</a>.</p>
-<ul>
-  <li>First item</li>
-  <li>Second item</li>
-</ul>
-<pre><code class="language-rust">fn main() {}</code></pre>
-```
-
-**Output Markdown:**
-
-```markdown
-# Title
-
-A **bold** and *italic* paragraph with [a link](https://example.com).
-
-- First item
-- Second item
-
-​```rust
-fn main() {}
-​```
-```
 
 ## Supported HTML Elements
 
@@ -264,6 +316,37 @@ let converter = builder.build();
 let md = converter.convert("<p>This is <mark>important</mark></p>");
 assert!(md.contains("==important=="));
 ```
+
+## Feature Flags
+
+**`h2m`** crate:
+
+- `scrape` — async HTTP scraping (adds `tokio`, `reqwest`, `serde`)
+
+**`h2m-search`** crate:
+
+- `searxng` (default) — SearXNG provider
+- `brave` — Brave Search API provider
+- `tavily` — Tavily API provider
+- `all` — all providers
+
+**`h2m-cli`** binary:
+
+- `search` (default) — enables the `search` subcommand
+- `all-providers` — bundles every provider (used for release builds)
+
+## Migration from 0.5
+
+v0.6 introduced a subcommand tree. Update every invocation:
+
+| Before (0.5)                | After (0.6)                       |
+| --------------------------- | --------------------------------- |
+| `h2m https://example.com`   | `h2m convert https://example.com` |
+| `h2m --gfm page.html`       | `h2m convert --gfm page.html`     |
+| `curl -s URL \| h2m -r`     | `curl -s URL \| h2m convert -r`   |
+| _(new)_                     | `h2m search "query" --scrape`     |
+
+All `convert` flags are unchanged; only the leading subcommand is required.
 
 ## License
 
