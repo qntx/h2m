@@ -5,7 +5,7 @@
 //! Provides a unified interface over multiple search backends. The design
 //! mirrors the Firecrawl `/search` endpoint — default results carry only
 //! `title`/`url`/`description`, while the companion CLI `--scrape` flag
-//! funnels hits through the existing [`h2m::scrape::Scraper`] pipeline.
+//! funnels hits through the existing `h2m::scrape::Scraper` pipeline.
 //!
 //! ## Providers
 //!
@@ -46,8 +46,11 @@ compile_error!(
 
 mod client;
 mod error;
+mod http;
 mod query;
 mod response;
+mod retry;
+mod secret;
 
 pub mod providers;
 
@@ -59,10 +62,15 @@ pub use client::ENV_SEARXNG_URL;
 pub use client::ENV_TAVILY_API_KEY;
 pub use client::{ENV_PROVIDER, SearchClient, SearchClientBuilder};
 pub use error::SearchError;
+pub use http::{DEFAULT_TIMEOUT, HttpConfig, USER_AGENT};
+#[cfg(test)]
+use insta as _;
 #[cfg(test)]
 use pretty_assertions as _;
 pub use query::{SafeSearch, SearchQuery, SearchSource, TimeRange};
 pub use response::{SearchHit, SearchResponse};
+pub use retry::RetryPolicy;
+pub use secret::SecretString;
 #[cfg(test)]
 use serde_json as _;
 #[cfg(test)]

@@ -5,6 +5,8 @@
 //! contract: `async fn search(&self, &SearchQuery) -> Result<SearchResponse,
 //! SearchError>`.
 
+mod common;
+
 #[cfg(feature = "brave")]
 pub mod brave;
 #[cfg(feature = "searxng")]

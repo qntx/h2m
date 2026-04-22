@@ -1,4 +1,11 @@
 //! Error types for search operations.
+//!
+//! Variants are intentionally fine-grained so callers can implement
+//! provider-specific remediation (retry, rotate keys, surface UI messages)
+//! without parsing strings. Retry semantics are exposed via
+//! [`SearchError::is_retryable`].
+
+use std::time::Duration;
 
 use serde::Serialize;
 
@@ -6,13 +13,40 @@ use serde::Serialize;
 #[derive(Debug, Clone, thiserror::Error)]
 #[non_exhaustive]
 pub enum SearchError {
-    /// HTTP request or transport failure.
-    #[error("HTTP error from {provider}: {message}")]
-    Http {
-        /// Provider identifier (`"searxng"`, `"brave"`, `"tavily"`, …).
+    /// Transport / DNS / TLS / timeout failure — never reached the server.
+    #[error("transport error from {provider}: {message}")]
+    Transport {
+        /// Provider identifier.
         provider: &'static str,
         /// Human-readable description.
         message: String,
+    },
+
+    /// Server responded with a 5xx status.
+    #[error("{provider} returned HTTP {status}")]
+    ServerError {
+        /// Provider identifier.
+        provider: &'static str,
+        /// HTTP status code.
+        status: u16,
+    },
+
+    /// Server applied rate limiting (HTTP 429).
+    #[error("{provider} rate-limited this request")]
+    RateLimited {
+        /// Provider identifier.
+        provider: &'static str,
+        /// Optional `Retry-After` hint reported by the server.
+        retry_after: Option<Duration>,
+    },
+
+    /// Authentication or authorisation failed (401/403).
+    #[error("{provider} rejected credentials (HTTP {status})")]
+    AuthFailed {
+        /// Provider identifier.
+        provider: &'static str,
+        /// HTTP status code.
+        status: u16,
     },
 
     /// Required API key is missing from the environment.
@@ -57,13 +91,54 @@ impl SearchError {
     #[must_use]
     pub const fn provider(&self) -> Option<&'static str> {
         match self {
-            Self::Http { provider, .. }
+            Self::Transport { provider, .. }
+            | Self::ServerError { provider, .. }
+            | Self::RateLimited { provider, .. }
+            | Self::AuthFailed { provider, .. }
             | Self::MissingApiKey { provider, .. }
             | Self::InvalidResponse { provider, .. } => Some(provider),
             Self::MissingSearxngUrl | Self::ProviderUnavailable { .. } | Self::Config { .. } => {
                 None
             }
         }
+    }
+
+    /// Returns the HTTP status associated with this error, if any.
+    #[must_use]
+    pub const fn status(&self) -> Option<u16> {
+        match self {
+            Self::ServerError { status, .. } | Self::AuthFailed { status, .. } => Some(*status),
+            Self::RateLimited { .. } => Some(429),
+            _ => None,
+        }
+    }
+
+    /// Returns the machine-readable kind tag used in JSON serialization.
+    #[must_use]
+    pub const fn kind(&self) -> &'static str {
+        match self {
+            Self::Transport { .. } => "transport",
+            Self::ServerError { .. } => "serverError",
+            Self::RateLimited { .. } => "rateLimited",
+            Self::AuthFailed { .. } => "authFailed",
+            Self::MissingApiKey { .. } => "missingApiKey",
+            Self::MissingSearxngUrl => "missingSearxngUrl",
+            Self::InvalidResponse { .. } => "invalidResponse",
+            Self::ProviderUnavailable { .. } => "providerUnavailable",
+            Self::Config { .. } => "config",
+        }
+    }
+
+    /// Returns `true` if the error is worth retrying.
+    ///
+    /// Transient transport failures, 5xx, and 429 are retryable. Auth,
+    /// config, and validation errors are not.
+    #[must_use]
+    pub const fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::Transport { .. } | Self::ServerError { .. } | Self::RateLimited { .. }
+        )
     }
 }
 
@@ -72,9 +147,86 @@ impl Serialize for SearchError {
         use serde::ser::SerializeMap;
         let mut map = serializer.serialize_map(None)?;
         map.serialize_entry("error", &self.to_string())?;
+        map.serialize_entry("kind", self.kind())?;
         if let Some(p) = self.provider() {
             map.serialize_entry("provider", p)?;
         }
+        if let Some(s) = self.status() {
+            map.serialize_entry("status", &s)?;
+        }
         map.end()
+    }
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::indexing_slicing,
+    reason = "test assertions should panic on wrong shape"
+)]
+mod tests {
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+
+    #[test]
+    fn retryable_variants_are_correctly_identified() {
+        assert!(
+            SearchError::Transport {
+                provider: "x",
+                message: String::new()
+            }
+            .is_retryable()
+        );
+        assert!(
+            SearchError::ServerError {
+                provider: "x",
+                status: 503,
+            }
+            .is_retryable()
+        );
+        assert!(
+            SearchError::RateLimited {
+                provider: "x",
+                retry_after: None
+            }
+            .is_retryable()
+        );
+        assert!(
+            !SearchError::AuthFailed {
+                provider: "x",
+                status: 401,
+            }
+            .is_retryable()
+        );
+        assert!(
+            !SearchError::InvalidResponse {
+                provider: "x",
+                message: String::new()
+            }
+            .is_retryable()
+        );
+    }
+
+    #[test]
+    fn serializes_with_kind_tag_and_status() {
+        let err = SearchError::RateLimited {
+            provider: "brave",
+            retry_after: None,
+        };
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["kind"], "rateLimited");
+        assert_eq!(json["provider"], "brave");
+        assert_eq!(json["status"], 429);
+    }
+
+    #[test]
+    fn config_errors_omit_provider_and_status() {
+        let err = SearchError::Config {
+            message: "x".into(),
+        };
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["kind"], "config");
+        assert!(json.get("provider").is_none());
+        assert!(json.get("status").is_none());
     }
 }

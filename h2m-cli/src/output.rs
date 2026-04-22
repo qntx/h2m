@@ -1,98 +1,137 @@
-//! Output formatting for JSON and plain-text modes.
+//! Output formatting for JSON, NDJSON, and plain-text modes.
+//!
+//! A single [`OutputSink`] abstracts over stdout and file destinations.
+//! Every subcommand goes through it, so `--output` works uniformly for
+//! both `convert` and `search`.
 
-use std::fs;
-use std::io::{self, Write};
+use std::fs::File;
+use std::io::{self, BufWriter, Write};
 use std::path::Path;
 
 use h2m::scrape::{ScrapeError, ScrapeResult};
 
-/// Emits a single `ScrapeResult` to stdout or a file (JSON or plain).
-pub(crate) fn emit_single(json: bool, output: Option<&Path>, result: &ScrapeResult) {
-    if json {
-        write_json_pretty(result);
-    } else {
-        write_markdown(output, &result.markdown);
-    }
+use crate::error::CliError;
+
+/// Write target: either a buffered file or locked stdout.
+pub(crate) enum OutputSink {
+    /// Writes to stdout (locked per-call). Single-threaded callers should
+    /// wrap the sink in a `Mutex` to stream concurrently.
+    Stdout,
+    /// Buffered writer over an opened file path.
+    File(BufWriter<File>, std::path::PathBuf),
 }
 
-/// Emits a plain markdown string (stdin mode).
-pub(crate) fn emit_single_markdown(json: bool, output: Option<&Path>, md: &str) {
-    if json {
-        #[derive(serde::Serialize)]
-        struct StdinResult<'a> {
-            markdown: &'a str,
+impl OutputSink {
+    /// Opens the sink. `None` targets stdout; `Some(path)` opens/truncates
+    /// the file in buffered mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CliError::Io`] if the file cannot be created.
+    pub(crate) fn new(path: Option<&Path>) -> Result<Self, CliError> {
+        match path {
+            None => Ok(Self::Stdout),
+            Some(p) => {
+                let file = File::create(p)?;
+                Ok(Self::File(BufWriter::new(file), p.to_path_buf()))
+            }
         }
-        write_json_pretty(&StdinResult { markdown: md });
-    } else {
-        write_markdown(output, md);
+    }
+
+    /// Writes a single `ScrapeResult` (JSON or plain Markdown).
+    pub(crate) fn emit_single(&mut self, json: bool, result: &ScrapeResult) {
+        if json {
+            self.write_json_pretty(result);
+        } else {
+            self.write_line(&result.markdown);
+        }
+    }
+
+    /// Writes a stand-alone Markdown string (stdin mode in `convert`).
+    pub(crate) fn emit_single_markdown(&mut self, json: bool, md: &str) {
+        if json {
+            #[derive(serde::Serialize)]
+            struct StdinResult<'a> {
+                markdown: &'a str,
+            }
+            self.write_json_pretty(&StdinResult { markdown: md });
+        } else {
+            self.write_line(md);
+        }
+    }
+
+    /// Writes a single NDJSON line for a batch scrape result.
+    pub(crate) fn emit_ndjson(&mut self, result: &Result<ScrapeResult, ScrapeError>) {
+        let serialised = match result {
+            Ok(r) => serde_json::to_string(r),
+            Err(e) => serde_json::to_string(e),
+        };
+        if let Ok(line) = serialised {
+            self.write_line(&line);
+        }
+    }
+
+    /// Writes a plain-text batch entry. Errors go to stderr (not the sink)
+    /// to keep the primary output clean.
+    pub(crate) fn emit_batch_plain(&mut self, result: &Result<ScrapeResult, ScrapeError>) {
+        match result {
+            Ok(r) => self.write_line(&r.markdown),
+            Err(e) => eprintln!("error: {e}"),
+        }
+    }
+
+    /// Writes any serializable value as pretty-printed JSON.
+    #[cfg(feature = "search")]
+    pub(crate) fn emit_json_pretty<T: serde::Serialize>(&mut self, value: &T) {
+        self.write_json_pretty(value);
+    }
+
+    /// Writes any serializable value as a single NDJSON line.
+    #[cfg(feature = "search")]
+    pub(crate) fn emit_search_ndjson<T: serde::Serialize>(&mut self, value: &T) {
+        if let Ok(line) = serde_json::to_string(value) {
+            self.write_line(&line);
+        }
+    }
+
+    fn write_json_pretty(&mut self, value: &impl serde::Serialize) {
+        if let Ok(s) = serde_json::to_string_pretty(value) {
+            self.write_line(&s);
+        }
+    }
+
+    fn write_line(&mut self, line: &str) {
+        match self {
+            Self::Stdout => {
+                let stdout = io::stdout();
+                let mut out = stdout.lock();
+                _ = writeln!(out, "{line}");
+            }
+            Self::File(writer, _) => {
+                _ = writeln!(writer, "{line}");
+            }
+        }
     }
 }
 
-/// Emits a streaming NDJSON line for batch results.
-pub(crate) fn emit_ndjson(result: &Result<ScrapeResult, ScrapeError>) {
-    let line = match result {
-        Ok(r) => serde_json::to_string(r),
-        Err(e) => serde_json::to_string(e),
-    };
-    if let Ok(json) = line {
-        write_stdout_line(&json);
+impl Drop for OutputSink {
+    fn drop(&mut self) {
+        if let Self::File(w, path) = self {
+            if let Err(e) = w.flush() {
+                eprintln!("error: cannot flush {}: {e}", path.display());
+            } else {
+                eprintln!("Written to {}", path.display());
+            }
+        }
     }
 }
 
-/// Emits a batch result line (plain-text mode).
-pub(crate) fn emit_batch_plain(result: &Result<ScrapeResult, ScrapeError>) {
-    match result {
-        Ok(r) => write_stdout_line(&r.markdown),
-        Err(e) => eprintln!("error: {e}"),
-    }
-}
-
-/// Prints a JSON error object for the `convert` pipeline.
+/// Prints a JSON error object for the `convert` pipeline (always stdout).
 pub(crate) fn emit_json_error(msg: &str, url: Option<&str>) {
     let e = ScrapeError::new(msg, url.map(str::to_owned));
-    write_json_pretty(&e);
-}
-
-/// Serializes any value to pretty JSON and writes it to stdout.
-#[cfg(feature = "search")]
-pub(crate) fn emit_json_pretty<T: serde::Serialize>(value: &T) {
-    write_json_pretty(value);
-}
-
-/// Writes a single NDJSON line for search results.
-#[cfg(feature = "search")]
-pub(crate) fn emit_search_ndjson<T: serde::Serialize>(value: &T) {
-    if let Ok(line) = serde_json::to_string(value) {
-        write_stdout_line(&line);
-    }
-}
-
-/// Writes Markdown to file or stdout.
-fn write_markdown(output: Option<&Path>, md: &str) {
-    if let Some(path) = output {
-        if let Err(e) = fs::write(path, md) {
-            eprintln!("error: cannot write {}: {e}", path.display());
-        } else {
-            eprintln!("Written to {}", path.display());
-        }
-    } else {
+    if let Ok(s) = serde_json::to_string_pretty(&e) {
         let stdout = io::stdout();
         let mut out = stdout.lock();
-        _ = out.write_all(md.as_bytes());
-        _ = out.write_all(b"\n");
+        _ = writeln!(out, "{s}");
     }
-}
-
-/// Writes a pretty-printed JSON value to stdout.
-fn write_json_pretty(value: &impl serde::Serialize) {
-    if let Ok(s) = serde_json::to_string_pretty(value) {
-        write_stdout_line(&s);
-    }
-}
-
-/// Writes a single line to stdout, silently ignoring broken-pipe errors.
-fn write_stdout_line(line: &str) {
-    let stdout = io::stdout();
-    let mut out = stdout.lock();
-    _ = writeln!(out, "{line}");
 }

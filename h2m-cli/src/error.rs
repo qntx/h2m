@@ -2,6 +2,7 @@
 
 /// Errors that can occur during CLI execution.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub(crate) enum CliError {
     /// HTTP scrape or conversion error from the library.
     #[error("{0}")]
@@ -16,14 +17,18 @@ pub(crate) enum CliError {
     #[error("{0}")]
     Io(#[from] std::io::Error),
 
-    /// Context-rich error with an optional URL.
+    /// User-supplied input is malformed (e.g. missing URL file, bad flag combo).
     #[error("{message}")]
-    Other {
-        /// Human-readable error description.
+    BadInput {
+        /// Human-readable description.
         message: String,
-        /// URL that caused the error, if applicable.
+        /// Associated URL, if any.
         url: Option<String>,
     },
+
+    /// The process received `SIGINT` / Ctrl-C.
+    #[error("operation cancelled by user")]
+    Interrupted,
 }
 
 impl CliError {
@@ -33,8 +38,16 @@ impl CliError {
             Self::Scrape(e) => e.url(),
             #[cfg(feature = "search")]
             Self::Search(_) => None,
-            Self::Io(_) => None,
-            Self::Other { url, .. } => url.as_deref(),
+            Self::Io(_) | Self::Interrupted => None,
+            Self::BadInput { url, .. } => url.as_deref(),
+        }
+    }
+
+    /// Convenience helper: constructs a [`CliError::BadInput`].
+    pub(crate) fn bad_input(message: impl Into<String>) -> Self {
+        Self::BadInput {
+            message: message.into(),
+            url: None,
         }
     }
 }

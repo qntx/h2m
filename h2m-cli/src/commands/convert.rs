@@ -71,9 +71,10 @@ impl ConvertArgs {
 
         if let [input] = inputs.as_slice() {
             let result = scraper.scrape(input).await?;
-            output::emit_single(self.json, self.output.as_deref(), &result);
+            let mut sink = output::OutputSink::new(self.output.as_deref())?;
+            sink.emit_single(self.json, &result);
         } else {
-            self.run_batch(&scraper, &inputs).await;
+            self.run_batch(&scraper, &inputs).await?;
         }
 
         Ok(())
@@ -88,9 +89,8 @@ impl ConvertArgs {
             .collect();
 
         if let Some(path) = &self.urls {
-            let content = fs::read_to_string(path).map_err(|e| CliError::Other {
-                message: format!("cannot read URL file {}: {e}", path.display()),
-                url: None,
+            let content = fs::read_to_string(path).map_err(|e| {
+                CliError::bad_input(format!("cannot read URL file {}: {e}", path.display()))
             })?;
             inputs.extend(
                 content
@@ -122,24 +122,27 @@ impl ConvertArgs {
             buf
         };
         let md = converter.convert(&html);
-        output::emit_single_markdown(self.json, self.output.as_deref(), &md);
+        let mut sink = output::OutputSink::new(self.output.as_deref())?;
+        sink.emit_single_markdown(self.json, &md);
         Ok(())
     }
 
-    async fn run_batch(&self, scraper: &Scraper, inputs: &[String]) {
-        if self.json {
-            scraper
-                .scrape_many_streaming(inputs, |result| {
-                    output::emit_ndjson(&result);
-                })
-                .await;
-        } else {
-            scraper
-                .scrape_many_streaming(inputs, |result| {
-                    output::emit_batch_plain(&result);
-                })
-                .await;
-        }
+    async fn run_batch(&self, scraper: &Scraper, inputs: &[String]) -> Result<(), CliError> {
+        let sink = std::sync::Mutex::new(output::OutputSink::new(self.output.as_deref())?);
+        let json = self.json;
+        scraper
+            .scrape_many_streaming(inputs, |result| {
+                let Ok(mut sink) = sink.lock() else {
+                    return;
+                };
+                if json {
+                    sink.emit_ndjson(&result);
+                } else {
+                    sink.emit_batch_plain(&result);
+                }
+            })
+            .await;
+        Ok(())
     }
 
     fn build_scraper(&self) -> Result<Scraper, CliError> {

@@ -9,6 +9,8 @@ use std::env;
 use crate::error::SearchError;
 use crate::query::SearchQuery;
 use crate::response::SearchResponse;
+#[cfg(any(feature = "brave", feature = "tavily"))]
+use crate::secret::SecretString;
 
 /// Environment variable selecting the default provider (`searxng`, `brave`, …).
 pub const ENV_PROVIDER: &str = "H2M_SEARCH_PROVIDER";
@@ -74,32 +76,16 @@ impl SearchClient {
     ///
     /// See [`SearchClient::from_env`].
     pub fn from_provider_name(name: &str) -> Result<Self, SearchError> {
-        match name.trim().to_ascii_lowercase().as_str() {
-            #[cfg(feature = "searxng")]
-            "searxng" => {
-                let url = env::var(ENV_SEARXNG_URL).map_err(|_| SearchError::MissingSearxngUrl)?;
-                Ok(Self::SearXNG(crate::providers::searxng::SearXNG::new(url)?))
-            }
-            #[cfg(feature = "brave")]
-            "brave" => {
-                let key = env::var(ENV_BRAVE_API_KEY).map_err(|_| SearchError::MissingApiKey {
-                    provider: "brave",
-                    env_var: ENV_BRAVE_API_KEY,
-                })?;
-                Ok(Self::Brave(crate::providers::brave::Brave::new(key)?))
-            }
-            #[cfg(feature = "tavily")]
-            "tavily" => {
-                let key = env::var(ENV_TAVILY_API_KEY).map_err(|_| SearchError::MissingApiKey {
-                    provider: "tavily",
-                    env_var: ENV_TAVILY_API_KEY,
-                })?;
-                Ok(Self::Tavily(crate::providers::tavily::Tavily::new(key)?))
-            }
-            other => Err(SearchError::ProviderUnavailable {
-                name: other.to_owned(),
-            }),
-        }
+        let builder = Self::builder().provider(name);
+        #[cfg(feature = "searxng")]
+        let builder = if name.trim().eq_ignore_ascii_case("searxng")
+            && let Ok(url) = env::var(ENV_SEARXNG_URL)
+        {
+            builder.searxng_url(url)
+        } else {
+            builder
+        };
+        builder.build()
     }
 
     /// Returns the provider identifier (`"searxng"`, …).
@@ -139,9 +125,14 @@ impl SearchClient {
 #[derive(Debug, Default)]
 pub struct SearchClientBuilder {
     provider: Option<String>,
+    #[cfg(feature = "searxng")]
     searxng_url: Option<String>,
-    brave_api_key: Option<String>,
-    tavily_api_key: Option<String>,
+    #[cfg(feature = "brave")]
+    brave_api_key: Option<SecretString>,
+    #[cfg(feature = "tavily")]
+    tavily_api_key: Option<SecretString>,
+    http: Option<crate::http::HttpConfig>,
+    retry: Option<crate::retry::RetryPolicy>,
 }
 
 impl SearchClientBuilder {
@@ -153,6 +144,7 @@ impl SearchClientBuilder {
     }
 
     /// Overrides the `SearXNG` instance URL.
+    #[cfg(feature = "searxng")]
     #[must_use]
     pub fn searxng_url(mut self, url: impl Into<String>) -> Self {
         self.searxng_url = Some(url.into());
@@ -160,16 +152,33 @@ impl SearchClientBuilder {
     }
 
     /// Overrides the Brave API key.
+    #[cfg(feature = "brave")]
     #[must_use]
-    pub fn brave_api_key(mut self, key: impl Into<String>) -> Self {
+    pub fn brave_api_key(mut self, key: impl Into<SecretString>) -> Self {
         self.brave_api_key = Some(key.into());
         self
     }
 
     /// Overrides the Tavily API key.
+    #[cfg(feature = "tavily")]
     #[must_use]
-    pub fn tavily_api_key(mut self, key: impl Into<String>) -> Self {
+    pub fn tavily_api_key(mut self, key: impl Into<SecretString>) -> Self {
         self.tavily_api_key = Some(key.into());
+        self
+    }
+
+    /// Supplies a shared [`HttpConfig`](crate::HttpConfig) used by the
+    /// selected provider. When omitted, each provider constructs its own.
+    #[must_use]
+    pub fn http(mut self, http: crate::http::HttpConfig) -> Self {
+        self.http = Some(http);
+        self
+    }
+
+    /// Overrides the retry policy applied by the chosen provider.
+    #[must_use]
+    pub const fn retry(mut self, policy: crate::retry::RetryPolicy) -> Self {
+        self.retry = Some(policy);
         self
     }
 
@@ -193,35 +202,50 @@ impl SearchClientBuilder {
                     .searxng_url
                     .or_else(|| env::var(ENV_SEARXNG_URL).ok())
                     .ok_or(SearchError::MissingSearxngUrl)?;
-                Ok(SearchClient::SearXNG(
-                    crate::providers::searxng::SearXNG::new(url)?,
-                ))
+                let mut b = crate::providers::searxng::SearXNG::builder(url);
+                if let Some(http) = self.http {
+                    b = b.http(http);
+                }
+                if let Some(retry) = self.retry {
+                    b = b.retry(retry);
+                }
+                Ok(SearchClient::SearXNG(b.build()?))
             }
             #[cfg(feature = "brave")]
             "brave" => {
                 let key = self
                     .brave_api_key
-                    .or_else(|| env::var(ENV_BRAVE_API_KEY).ok())
+                    .or_else(|| env::var(ENV_BRAVE_API_KEY).ok().map(SecretString::new))
                     .ok_or(SearchError::MissingApiKey {
                         provider: "brave",
                         env_var: ENV_BRAVE_API_KEY,
                     })?;
-                Ok(SearchClient::Brave(crate::providers::brave::Brave::new(
-                    key,
-                )?))
+                let mut b = crate::providers::brave::Brave::builder(key);
+                if let Some(http) = self.http {
+                    b = b.http(http);
+                }
+                if let Some(retry) = self.retry {
+                    b = b.retry(retry);
+                }
+                Ok(SearchClient::Brave(b.build()?))
             }
             #[cfg(feature = "tavily")]
             "tavily" => {
                 let key = self
                     .tavily_api_key
-                    .or_else(|| env::var(ENV_TAVILY_API_KEY).ok())
+                    .or_else(|| env::var(ENV_TAVILY_API_KEY).ok().map(SecretString::new))
                     .ok_or(SearchError::MissingApiKey {
                         provider: "tavily",
                         env_var: ENV_TAVILY_API_KEY,
                     })?;
-                Ok(SearchClient::Tavily(crate::providers::tavily::Tavily::new(
-                    key,
-                )?))
+                let mut b = crate::providers::tavily::Tavily::builder(key);
+                if let Some(http) = self.http {
+                    b = b.http(http);
+                }
+                if let Some(retry) = self.retry {
+                    b = b.retry(retry);
+                }
+                Ok(SearchClient::Tavily(b.build()?))
             }
             other => Err(SearchError::ProviderUnavailable {
                 name: other.to_owned(),

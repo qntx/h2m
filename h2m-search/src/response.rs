@@ -39,6 +39,27 @@ impl SearchHit {
             engine: None,
         }
     }
+
+    /// Attaches a description snippet.
+    #[must_use]
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    /// Attaches a publication timestamp (provider-supplied, untyped).
+    #[must_use]
+    pub fn with_published_at(mut self, published_at: impl Into<String>) -> Self {
+        self.published_at = Some(published_at.into());
+        self
+    }
+
+    /// Attaches the upstream engine identifier.
+    #[must_use]
+    pub fn with_engine(mut self, engine: impl Into<String>) -> Self {
+        self.engine = Some(engine.into());
+        self
+    }
 }
 
 /// Complete search response grouped by source.

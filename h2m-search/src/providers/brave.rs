@@ -6,25 +6,43 @@
 //!
 //! Enable the `brave` feature to use this provider.
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use serde::Deserialize;
+use tracing::instrument;
 
+use super::common::{classify_parse, classify_status, classify_transport};
 use crate::error::SearchError;
+use crate::http::HttpConfig;
 use crate::query::{SafeSearch, SearchQuery, SearchSource, TimeRange};
 use crate::response::{SearchHit, SearchResponse};
+use crate::retry::{RetryPolicy, retry};
+use crate::secret::SecretString;
 
 const PROVIDER_ID: &str = "brave";
 /// Canonical Brave Search API root URL.
 pub const DEFAULT_BASE_URL: &str = "https://api.search.brave.com";
 const SEARCH_PATH: &str = "res/v1/web/search";
+/// Brave caps `count` at 20 per documentation.
+const MAX_COUNT: usize = 20;
 
 /// Brave Search API provider.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Brave {
-    client: reqwest::Client,
+    http: HttpConfig,
     base_url: url::Url,
-    api_key: String,
+    api_key: SecretString,
+    retry_policy: RetryPolicy,
+}
+
+impl std::fmt::Debug for Brave {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Brave")
+            .field("base_url", &self.base_url.as_str())
+            .field("api_key", &self.api_key)
+            .field("retry_policy", &self.retry_policy)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Brave {
@@ -33,63 +51,101 @@ impl Brave {
     /// # Errors
     ///
     /// Returns [`SearchError::Config`] if the HTTP client cannot be built.
-    pub fn new(api_key: impl Into<String>) -> Result<Self, SearchError> {
-        Self::with_base_url(api_key, DEFAULT_BASE_URL)
+    pub fn new(api_key: impl Into<SecretString>) -> Result<Self, SearchError> {
+        Self::builder(api_key).build()
     }
 
-    /// Creates a provider pointing at a custom `base_url` (useful for tests).
+    /// Convenience constructor for tests and ad-hoc base URLs.
     ///
     /// # Errors
     ///
     /// Returns [`SearchError::Config`] if `base_url` is invalid or the HTTP
     /// client cannot be built.
     pub fn with_base_url(
-        api_key: impl Into<String>,
+        api_key: impl Into<SecretString>,
         base_url: impl AsRef<str>,
     ) -> Result<Self, SearchError> {
-        let base = url::Url::parse(base_url.as_ref()).map_err(|e| SearchError::Config {
-            message: format!("invalid Brave base URL: {e}"),
-        })?;
-        let client = reqwest::Client::builder()
-            .user_agent(concat!("h2m-search/", env!("CARGO_PKG_VERSION")))
-            .timeout(Duration::from_secs(30))
-            .build()
-            .map_err(|e| SearchError::Config {
-                message: format!("failed to build HTTP client: {e}"),
-            })?;
-        Ok(Self {
-            client,
-            base_url: base,
+        Self::builder(api_key).base_url(base_url.as_ref()).build()
+    }
+
+    /// Starts a typed builder for fine-grained configuration.
+    #[must_use]
+    pub fn builder(api_key: impl Into<SecretString>) -> BraveBuilder {
+        BraveBuilder {
             api_key: api_key.into(),
-        })
+            base_url: DEFAULT_BASE_URL.to_owned(),
+            http: None,
+            retry: None,
+        }
     }
 
     /// Executes a search against the Brave API.
     ///
     /// # Errors
     ///
-    /// Returns [`SearchError::Http`] on transport errors and
-    /// [`SearchError::InvalidResponse`] when the JSON payload does not match
-    /// the expected shape.
+    /// Returns the specific [`SearchError`] produced by the underlying
+    /// HTTP layer (see [`SearchError::is_retryable`]).
+    #[instrument(level = "debug", skip(self), fields(provider = PROVIDER_ID))]
     pub async fn search(&self, query: &SearchQuery) -> Result<SearchResponse, SearchError> {
         if !query.is_valid() {
             return Err(SearchError::Config {
                 message: "search query is empty".into(),
             });
         }
+        if self.api_key.is_empty() {
+            return Err(SearchError::MissingApiKey {
+                provider: PROVIDER_ID,
+                env_var: crate::client::ENV_BRAVE_API_KEY,
+            });
+        }
 
         let start = Instant::now();
+        let endpoint = self.build_endpoint(query)?;
+
+        let body: BraveResponse =
+            retry(&self.retry_policy, || self.request(endpoint.clone())).await?;
+
+        let mut result = SearchResponse::new(&query.query, PROVIDER_ID);
+        if query.sources.contains(&SearchSource::Web) {
+            push_section(&mut result, SearchSource::Web, body.web, query.limit);
+        }
+        if query.sources.contains(&SearchSource::News) {
+            push_section(&mut result, SearchSource::News, body.news, query.limit);
+        }
+        result.elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+        Ok(result)
+    }
+
+    async fn request(&self, endpoint: url::Url) -> Result<BraveResponse, SearchError> {
+        let response = self
+            .http
+            .client()
+            .get(endpoint)
+            .header("X-Subscription-Token", self.api_key.expose())
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(|e| classify_transport(PROVIDER_ID, &e))?;
+        if !response.status().is_success() {
+            return Err(classify_status(PROVIDER_ID, &response));
+        }
+        response
+            .json::<BraveResponse>()
+            .await
+            .map_err(|e| classify_parse(PROVIDER_ID, &e))
+    }
+
+    fn build_endpoint(&self, query: &SearchQuery) -> Result<url::Url, SearchError> {
         let mut endpoint = self
             .base_url
             .join(SEARCH_PATH)
             .map_err(|e| SearchError::Config {
                 message: format!("cannot build Brave endpoint: {e}"),
             })?;
-
         {
             let mut pairs = endpoint.query_pairs_mut();
             pairs.append_pair("q", &query.query);
-            pairs.append_pair("count", &query.limit.min(20).to_string());
+            pairs.append_pair("count", &query.limit.min(MAX_COUNT).to_string());
             pairs.append_pair("safesearch", safesearch_label(query.safesearch));
             if let Some(country) = &query.country {
                 pairs.append_pair("country", country);
@@ -101,45 +157,61 @@ impl Brave {
                 pairs.append_pair("freshness", freshness_label(tr));
             }
         }
+        Ok(endpoint)
+    }
+}
 
-        let response = self
-            .client
-            .get(endpoint)
-            .header("X-Subscription-Token", &self.api_key)
-            .header("Accept", "application/json")
-            .send()
-            .await
-            .map_err(|e| SearchError::Http {
-                provider: PROVIDER_ID,
-                message: e.to_string(),
-            })?;
+/// Typed builder for [`Brave`].
+#[derive(Debug)]
+pub struct BraveBuilder {
+    api_key: SecretString,
+    base_url: String,
+    http: Option<HttpConfig>,
+    retry: Option<RetryPolicy>,
+}
 
-        let status = response.status();
-        if !status.is_success() {
-            return Err(SearchError::Http {
-                provider: PROVIDER_ID,
-                message: format!("HTTP {status}"),
-            });
-        }
+impl BraveBuilder {
+    /// Overrides the API base URL (defaults to [`DEFAULT_BASE_URL`]).
+    #[must_use]
+    pub fn base_url(mut self, url: impl Into<String>) -> Self {
+        self.base_url = url.into();
+        self
+    }
 
-        let body: BraveResponse =
-            response
-                .json()
-                .await
-                .map_err(|e| SearchError::InvalidResponse {
-                    provider: PROVIDER_ID,
-                    message: e.to_string(),
-                })?;
+    /// Supplies a shared [`HttpConfig`].
+    #[must_use]
+    pub fn http(mut self, http: HttpConfig) -> Self {
+        self.http = Some(http);
+        self
+    }
 
-        let mut result = SearchResponse::new(&query.query, PROVIDER_ID);
-        if query.sources.contains(&SearchSource::Web) {
-            push_section(&mut result, SearchSource::Web, body.web, query.limit);
-        }
-        if query.sources.contains(&SearchSource::News) {
-            push_section(&mut result, SearchSource::News, body.news, query.limit);
-        }
-        result.elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
-        Ok(result)
+    /// Overrides the retry policy.
+    #[must_use]
+    pub const fn retry(mut self, policy: RetryPolicy) -> Self {
+        self.retry = Some(policy);
+        self
+    }
+
+    /// Builds the provider.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SearchError::Config`] if the base URL is invalid or the
+    /// default HTTP client cannot be constructed.
+    pub fn build(self) -> Result<Brave, SearchError> {
+        let base_url = url::Url::parse(&self.base_url).map_err(|e| SearchError::Config {
+            message: format!("invalid Brave base URL: {e}"),
+        })?;
+        let http = match self.http {
+            Some(cfg) => cfg,
+            None => HttpConfig::new()?,
+        };
+        Ok(Brave {
+            http,
+            base_url,
+            api_key: self.api_key,
+            retry_policy: self.retry.unwrap_or_default(),
+        })
     }
 }
 
@@ -277,7 +349,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn http_error_is_reported() {
+    async fn auth_failed_is_classified() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/res/v1/web/search"))
@@ -285,27 +357,48 @@ mod tests {
             .mount(&server)
             .await;
 
-        let provider = Brave::with_base_url("KEY", server.uri()).unwrap();
+        let provider = Brave::builder("KEY")
+            .base_url(server.uri())
+            .retry(RetryPolicy::NONE)
+            .build()
+            .unwrap();
         let err = provider.search(&SearchQuery::new("q")).await.unwrap_err();
         assert!(matches!(
             err,
-            SearchError::Http {
+            SearchError::AuthFailed {
+                provider: "brave",
+                status: 401
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn empty_api_key_short_circuits() {
+        let provider = Brave::new("").unwrap();
+        let err = provider.search(&SearchQuery::new("q")).await.unwrap_err();
+        assert!(matches!(
+            err,
+            SearchError::MissingApiKey {
                 provider: "brave",
                 ..
             }
         ));
     }
 
-    #[test]
-    fn empty_query_is_rejected() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
+    #[tokio::test]
+    async fn empty_query_is_rejected() {
         let provider = Brave::new("KEY").unwrap();
-        let err = runtime
-            .block_on(provider.search(&SearchQuery::new("")))
-            .unwrap_err();
+        let err = provider.search(&SearchQuery::new("")).await.unwrap_err();
         assert!(matches!(err, SearchError::Config { .. }));
+    }
+
+    #[tokio::test]
+    async fn debug_does_not_leak_api_key() {
+        let provider = Brave::new("super-secret-brave-key").unwrap();
+        let debug = format!("{provider:?}");
+        assert!(
+            !debug.contains("super-secret-brave-key"),
+            "Debug leaked key: {debug}"
+        );
     }
 }

@@ -93,7 +93,7 @@ impl SearchArgs {
         if self.scrape {
             self.run_scrape(&response).await?;
         } else {
-            self.emit(&response);
+            self.emit(&response)?;
         }
         Ok(())
     }
@@ -124,14 +124,16 @@ impl SearchArgs {
         q
     }
 
-    fn emit(&self, response: &SearchResponse) {
+    fn emit(&self, response: &SearchResponse) -> Result<(), CliError> {
+        let mut sink = output::OutputSink::new(self.output.as_deref())?;
         if self.json {
             for hit in response.all_hits() {
-                output::emit_search_ndjson(hit);
+                sink.emit_search_ndjson(hit);
             }
         } else {
-            output::emit_json_pretty(response);
+            sink.emit_json_pretty(response);
         }
+        Ok(())
     }
 
     async fn run_scrape(&self, response: &SearchResponse) -> Result<(), CliError> {
@@ -141,9 +143,12 @@ impl SearchArgs {
         }
 
         let scraper = self.build_scraper()?;
+        let sink = std::sync::Mutex::new(output::OutputSink::new(self.output.as_deref())?);
         scraper
             .scrape_many_streaming(&urls, |result| {
-                output::emit_ndjson(&result);
+                if let Ok(mut sink) = sink.lock() {
+                    sink.emit_ndjson(&result);
+                }
             })
             .await;
         Ok(())

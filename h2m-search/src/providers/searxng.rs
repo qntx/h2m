@@ -5,77 +5,69 @@
 //! no API key, but the caller must supply an instance URL — self-hosted
 //! deployments are recommended for reliability.
 //!
+//! `SearXNG` returns ~30 results per page. This provider transparently
+//! paginates when [`SearchQuery::limit`] exceeds that.
+//!
 //! Enable the `searxng` feature (on by default) to use this provider.
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use serde::Deserialize;
+use tracing::instrument;
 
+use super::common::{classify_parse, classify_status, classify_transport};
 use crate::error::SearchError;
+use crate::http::HttpConfig;
 use crate::query::{SearchQuery, SearchSource};
 use crate::response::{SearchHit, SearchResponse};
+use crate::retry::{RetryPolicy, retry};
 
 const PROVIDER_ID: &str = "searxng";
+/// Upstream default results per page (instance-dependent; 30 is a safe floor).
+const RESULTS_PER_PAGE: usize = 30;
+/// Safety cap to avoid runaway pagination against mis-configured instances.
+const MAX_PAGES: u32 = 5;
 
 /// `SearXNG` search provider.
 #[derive(Debug, Clone)]
 pub struct SearXNG {
-    client: reqwest::Client,
+    http: HttpConfig,
     base_url: url::Url,
+    retry_policy: RetryPolicy,
 }
 
 impl SearXNG {
-    /// Creates a new provider using the given `base_url`.
+    /// Creates a new provider using the given `base_url` and the default
+    /// shared HTTP client.
     ///
     /// # Errors
     ///
-    /// Returns [`SearchError::Config`] if `base_url` is not a valid URL or the
-    /// default HTTP client cannot be built.
+    /// Returns [`SearchError::Config`] if `base_url` is not a valid URL or
+    /// the default HTTP client cannot be built.
     pub fn new(base_url: impl AsRef<str>) -> Result<Self, SearchError> {
-        let base = url::Url::parse(base_url.as_ref()).map_err(|e| SearchError::Config {
-            message: format!("invalid SearXNG base URL: {e}"),
-        })?;
-        let client = reqwest::Client::builder()
-            .user_agent(concat!("h2m-search/", env!("CARGO_PKG_VERSION")))
-            .timeout(Duration::from_secs(30))
-            .build()
-            .map_err(|e| SearchError::Config {
-                message: format!("failed to build HTTP client: {e}"),
-            })?;
-        Ok(Self {
-            client,
-            base_url: base,
-        })
+        Self::builder(base_url).build()
     }
 
-    /// Wraps an existing [`reqwest::Client`] with the given `base_url`.
-    ///
-    /// Use this when you want to share a pool of connections across multiple
-    /// providers or with the [`h2m::scrape::Scraper`] pipeline.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SearchError::Config`] if `base_url` cannot be parsed.
-    pub fn with_client(
-        client: reqwest::Client,
-        base_url: impl AsRef<str>,
-    ) -> Result<Self, SearchError> {
-        let base = url::Url::parse(base_url.as_ref()).map_err(|e| SearchError::Config {
-            message: format!("invalid SearXNG base URL: {e}"),
-        })?;
-        Ok(Self {
-            client,
-            base_url: base,
-        })
+    /// Starts a typed builder for fine-grained configuration.
+    #[must_use]
+    pub fn builder(base_url: impl AsRef<str>) -> SearXNGBuilder {
+        SearXNGBuilder {
+            base_url: base_url.as_ref().to_owned(),
+            http: None,
+            retry: None,
+        }
     }
 
     /// Executes a search against the `SearXNG` instance.
     ///
+    /// Transparently paginates to satisfy [`SearchQuery::limit`] up to
+    /// `MAX_PAGES` pages, honouring retries on 429/5xx responses.
+    ///
     /// # Errors
     ///
-    /// Returns [`SearchError::Http`] on transport errors and
-    /// [`SearchError::InvalidResponse`] when the JSON payload does not match
-    /// the expected shape.
+    /// Returns the specific [`SearchError`] produced by the underlying
+    /// HTTP layer (see [`SearchError::is_retryable`]).
+    #[instrument(level = "debug", skip(self), fields(provider = PROVIDER_ID))]
     pub async fn search(&self, query: &SearchQuery) -> Result<SearchResponse, SearchError> {
         if !query.is_valid() {
             return Err(SearchError::Config {
@@ -84,22 +76,74 @@ impl SearXNG {
         }
 
         let start = Instant::now();
+        let mut result = SearchResponse::new(&query.query, PROVIDER_ID);
+
+        let mut page: u32 = 1;
+        while result.total() < query.limit && page <= MAX_PAGES {
+            let body = self.fetch_page(query, page).await?;
+            let page_size = body.results.len();
+            if page_size == 0 {
+                break;
+            }
+            for raw in body.results {
+                if result.total() >= query.limit {
+                    break;
+                }
+                let source = classify_source(raw.category.as_deref());
+                result.push(source, raw.into_hit());
+            }
+            // A short page signals the instance has no more results.
+            if page_size < RESULTS_PER_PAGE {
+                break;
+            }
+            page = page.saturating_add(1);
+        }
+
+        result.elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+        Ok(result)
+    }
+
+    async fn fetch_page(
+        &self,
+        query: &SearchQuery,
+        pageno: u32,
+    ) -> Result<SearxngResponse, SearchError> {
+        let endpoint = self.build_endpoint(query, pageno)?;
+        retry(&self.retry_policy, || self.request(endpoint.clone())).await
+    }
+
+    async fn request(&self, endpoint: url::Url) -> Result<SearxngResponse, SearchError> {
+        let response = self
+            .http
+            .client()
+            .get(endpoint)
+            .send()
+            .await
+            .map_err(|e| classify_transport(PROVIDER_ID, &e))?;
+        if !response.status().is_success() {
+            return Err(classify_status(PROVIDER_ID, &response));
+        }
+        response
+            .json::<SearxngResponse>()
+            .await
+            .map_err(|e| classify_parse(PROVIDER_ID, &e))
+    }
+
+    fn build_endpoint(&self, query: &SearchQuery, pageno: u32) -> Result<url::Url, SearchError> {
         let mut endpoint = self
             .base_url
             .join("search")
             .map_err(|e| SearchError::Config {
                 message: format!("cannot build /search endpoint: {e}"),
             })?;
-
         let categories = build_categories(&query.sources);
         let safesearch = query.safesearch.as_u8().to_string();
-        let pageno = "1";
-
+        let page_string = pageno.to_string();
         {
             let mut pairs = endpoint.query_pairs_mut();
             pairs.append_pair("q", &query.query);
             pairs.append_pair("format", "json");
-            pairs.append_pair("pageno", pageno);
+            pairs.append_pair("pageno", &page_string);
             pairs.append_pair("safesearch", &safesearch);
             if !categories.is_empty() {
                 pairs.append_pair("categories", &categories);
@@ -111,44 +155,52 @@ impl SearXNG {
                 pairs.append_pair("language", lang);
             }
         }
+        Ok(endpoint)
+    }
+}
 
-        let response = self
-            .client
-            .get(endpoint)
-            .send()
-            .await
-            .map_err(|e| SearchError::Http {
-                provider: PROVIDER_ID,
-                message: e.to_string(),
-            })?;
+/// Typed builder for [`SearXNG`].
+#[derive(Debug)]
+pub struct SearXNGBuilder {
+    base_url: String,
+    http: Option<HttpConfig>,
+    retry: Option<RetryPolicy>,
+}
 
-        let status = response.status();
-        if !status.is_success() {
-            return Err(SearchError::Http {
-                provider: PROVIDER_ID,
-                message: format!("HTTP {status}"),
-            });
-        }
+impl SearXNGBuilder {
+    /// Supplies a shared [`HttpConfig`].
+    #[must_use]
+    pub fn http(mut self, http: HttpConfig) -> Self {
+        self.http = Some(http);
+        self
+    }
 
-        let body: SearxngResponse =
-            response
-                .json()
-                .await
-                .map_err(|e| SearchError::InvalidResponse {
-                    provider: PROVIDER_ID,
-                    message: e.to_string(),
-                })?;
+    /// Overrides the retry policy.
+    #[must_use]
+    pub const fn retry(mut self, policy: RetryPolicy) -> Self {
+        self.retry = Some(policy);
+        self
+    }
 
-        let mut result = SearchResponse::new(&query.query, PROVIDER_ID);
-        for (i, raw) in body.results.into_iter().enumerate() {
-            if i >= query.limit {
-                break;
-            }
-            let source = classify_source(raw.category.as_deref());
-            result.push(source, raw.into_hit());
-        }
-        result.elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
-        Ok(result)
+    /// Builds the provider.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SearchError::Config`] if the base URL is invalid or the
+    /// default HTTP client cannot be constructed.
+    pub fn build(self) -> Result<SearXNG, SearchError> {
+        let base_url = url::Url::parse(&self.base_url).map_err(|e| SearchError::Config {
+            message: format!("invalid SearXNG base URL: {e}"),
+        })?;
+        let http = match self.http {
+            Some(cfg) => cfg,
+            None => HttpConfig::new()?,
+        };
+        Ok(SearXNG {
+            http,
+            base_url,
+            retry_policy: self.retry.unwrap_or_default(),
+        })
     }
 }
 
@@ -293,7 +345,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn http_error_is_reported() {
+    async fn server_error_is_classified_not_http() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/search"))
@@ -301,27 +353,94 @@ mod tests {
             .mount(&server)
             .await;
 
-        let provider = SearXNG::new(server.uri()).unwrap();
+        let provider = SearXNG::builder(server.uri())
+            .retry(RetryPolicy::NONE)
+            .build()
+            .unwrap();
         let err = provider.search(&SearchQuery::new("x")).await.unwrap_err();
         assert!(matches!(
             err,
-            SearchError::Http {
+            SearchError::ServerError {
                 provider: "searxng",
-                ..
+                status: 503
             }
         ));
     }
 
-    #[test]
-    fn empty_query_is_rejected() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
+    #[tokio::test]
+    async fn rate_limited_surfaces_retry_after() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/search"))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "2"))
+            .mount(&server)
+            .await;
+
+        let provider = SearXNG::builder(server.uri())
+            .retry(RetryPolicy::NONE)
             .build()
             .unwrap();
+        let err = provider.search(&SearchQuery::new("x")).await.unwrap_err();
+        assert!(matches!(
+            err,
+            SearchError::RateLimited {
+                provider: "searxng",
+                retry_after: Some(d),
+            } if d == std::time::Duration::from_secs(2)
+        ));
+    }
+
+    #[tokio::test]
+    async fn paginates_when_limit_exceeds_first_page() {
+        let server = MockServer::start().await;
+        let page1: Vec<_> = (0..30)
+            .map(|i| {
+                serde_json::json!({
+                    "url": format!("https://example.com/{i}"),
+                    "title": format!("R{i}"),
+                    "category": "general"
+                })
+            })
+            .collect();
+        let page2: Vec<_> = (30..45)
+            .map(|i| {
+                serde_json::json!({
+                    "url": format!("https://example.com/{i}"),
+                    "title": format!("R{i}"),
+                    "category": "general"
+                })
+            })
+            .collect();
+
+        Mock::given(method("GET"))
+            .and(path("/search"))
+            .and(query_param("pageno", "1"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "results": page1 })),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/search"))
+            .and(query_param("pageno", "2"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "results": page2 })),
+            )
+            .mount(&server)
+            .await;
+
+        let provider = SearXNG::new(server.uri()).unwrap();
+        let response = provider
+            .search(&SearchQuery::new("x").with_limit(45))
+            .await
+            .unwrap();
+        assert_eq!(response.total(), 45);
+    }
+
+    #[tokio::test]
+    async fn empty_query_is_rejected() {
         let provider = SearXNG::new("https://searx.example.org").unwrap();
-        let err = runtime
-            .block_on(provider.search(&SearchQuery::new("")))
-            .unwrap_err();
+        let err = provider.search(&SearchQuery::new("")).await.unwrap_err();
         assert!(matches!(err, SearchError::Config { .. }));
     }
 
