@@ -17,6 +17,8 @@ const PROVIDER_ID: &str = "tavily";
 /// Canonical Tavily API root URL.
 pub const DEFAULT_BASE_URL: &str = "https://api.tavily.com";
 const SEARCH_PATH: &str = "search";
+/// Tavily caps `max_results` at 20 per request.
+const MAX_RESULTS: usize = 20;
 
 /// Tavily Search API provider.
 #[derive(Debug, Clone)]
@@ -86,22 +88,19 @@ impl Tavily {
             })?;
 
         let payload = TavilyRequest {
-            api_key: &self.api_key,
             query: &query.query,
-            max_results: query.limit,
-            search_depth: if query.limit > 10 {
-                "advanced"
-            } else {
-                "basic"
-            },
+            max_results: query.limit.min(MAX_RESULTS),
+            search_depth: "basic",
             include_domains: None,
             time_range: query.time_range.map(time_range_label),
             topic: topic_for(&query.sources),
+            country: query.country.as_deref(),
         };
 
         let response = self
             .client
             .post(endpoint)
+            .bearer_auth(&self.api_key)
             .header("Content-Type", "application/json")
             .json(&payload)
             .send()
@@ -161,7 +160,6 @@ fn topic_for(sources: &[SearchSource]) -> &'static str {
 
 #[derive(Debug, Serialize)]
 struct TavilyRequest<'a> {
-    api_key: &'a str,
     query: &'a str,
     max_results: usize,
     search_depth: &'a str,
@@ -170,6 +168,8 @@ struct TavilyRequest<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     time_range: Option<&'static str>,
     topic: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    country: Option<&'a str>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -209,19 +209,21 @@ impl TavilyResult {
 )]
 mod tests {
     use pretty_assertions::assert_eq;
-    use wiremock::matchers::{body_partial_json, method, path};
+    use wiremock::matchers::{body_partial_json, header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
 
     #[tokio::test]
-    async fn maps_results_to_web() {
+    async fn maps_results_to_web_with_bearer_auth() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/search"))
+            .and(header("Authorization", "Bearer tvly-KEY"))
             .and(body_partial_json(serde_json::json!({
                 "query": "rust",
-                "topic": "general"
+                "topic": "general",
+                "search_depth": "basic"
             })))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "results": [
@@ -231,12 +233,68 @@ mod tests {
             .mount(&server)
             .await;
 
-        let provider = Tavily::with_base_url("KEY", server.uri()).unwrap();
+        let provider = Tavily::with_base_url("tvly-KEY", server.uri()).unwrap();
         let response = provider.search(&SearchQuery::new("rust")).await.unwrap();
 
         assert_eq!(response.provider, "tavily");
         assert_eq!(response.web.len(), 1);
         assert_eq!(response.web[0].published_at.as_deref(), Some("2025-10-01"));
+    }
+
+    #[tokio::test]
+    async fn does_not_leak_api_key_in_body() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/search"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": []
+            })))
+            .mount(&server)
+            .await;
+
+        let provider = Tavily::with_base_url("tvly-SECRET", server.uri()).unwrap();
+        let _ = provider.search(&SearchQuery::new("q")).await.unwrap();
+
+        let requests = server.received_requests().await.unwrap();
+        let body = std::str::from_utf8(&requests[0].body).unwrap();
+        assert!(
+            !body.contains("tvly-SECRET") && !body.contains("api_key"),
+            "API key must only live in the Bearer header, got body: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn clamps_limit_to_api_maximum() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/search"))
+            .and(body_partial_json(serde_json::json!({ "max_results": 20 })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": []
+            })))
+            .mount(&server)
+            .await;
+
+        let provider = Tavily::with_base_url("tvly-KEY", server.uri()).unwrap();
+        let query = SearchQuery::new("q").with_limit(50);
+        provider.search(&query).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn forwards_country_when_set() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/search"))
+            .and(body_partial_json(serde_json::json!({ "country": "united states" })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": []
+            })))
+            .mount(&server)
+            .await;
+
+        let provider = Tavily::with_base_url("tvly-KEY", server.uri()).unwrap();
+        let query = SearchQuery::new("q").with_country("united states");
+        provider.search(&query).await.unwrap();
     }
 
     #[tokio::test]
