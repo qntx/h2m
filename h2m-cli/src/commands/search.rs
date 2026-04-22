@@ -53,6 +53,14 @@ pub(crate) struct SearchArgs {
     #[arg(long)]
     pub searxng_url: Option<String>,
 
+    /// Request Tavily's LLM-generated answer alongside results.
+    ///
+    /// Only applies to the Tavily provider; `SearXNG` and Brave ignore it.
+    /// The answer (when present) is surfaced as `answer` in the JSON
+    /// response. Tavily charges extra credits for this feature.
+    #[arg(long)]
+    pub include_answer: bool,
+
     /// After search, scrape each hit and emit a `ScrapeResult` per line (NDJSON).
     #[arg(long)]
     pub scrape: bool,
@@ -102,6 +110,9 @@ impl SearchArgs {
         let mut builder = SearchClient::builder().provider(&self.provider);
         if let Some(url) = &self.searxng_url {
             builder = builder.searxng_url(url);
+        }
+        if self.include_answer {
+            builder = builder.tavily_include_answer(true);
         }
         builder.build().map_err(CliError::from)
     }

@@ -4,6 +4,10 @@
 //! index. Requires a subscription token supplied via the `BRAVE_API_KEY`
 //! environment variable.
 //!
+//! Brave caps `count` at 20 per page and `offset` at 9, giving a hard
+//! ceiling of 200 results. This provider transparently paginates via
+//! `offset` when [`SearchQuery::limit`] exceeds a single page.
+//!
 //! Enable the `brave` feature to use this provider.
 
 use std::time::Instant;
@@ -25,6 +29,8 @@ pub const DEFAULT_BASE_URL: &str = "https://api.search.brave.com";
 const SEARCH_PATH: &str = "res/v1/web/search";
 /// Brave caps `count` at 20 per documentation.
 const MAX_COUNT: usize = 20;
+/// Brave caps `offset` at 9 (0-indexed), giving 10 pages / 200 results max.
+const MAX_OFFSET: u32 = 9;
 
 /// Brave Search API provider.
 #[derive(Clone)]
@@ -81,6 +87,10 @@ impl Brave {
 
     /// Executes a search against the Brave API.
     ///
+    /// Transparently paginates via `offset` up to [`MAX_OFFSET`] to satisfy
+    /// [`SearchQuery::limit`] (hard ceiling of 200 results). Each page
+    /// request honours retries on 429/5xx responses.
+    ///
     /// # Errors
     ///
     /// Returns the specific [`SearchError`] produced by the underlying
@@ -100,20 +110,44 @@ impl Brave {
         }
 
         let start = Instant::now();
-        let endpoint = self.build_endpoint(query)?;
-
-        let body: BraveResponse =
-            retry(&self.retry_policy, || self.request(endpoint.clone())).await?;
-
         let mut result = SearchResponse::new(&query.query, PROVIDER_ID);
-        if query.sources.contains(&SearchSource::Web) {
-            push_section(&mut result, SearchSource::Web, body.web, query.limit);
+        let wants_web = query.sources.contains(&SearchSource::Web);
+        let wants_news = query.sources.contains(&SearchSource::News);
+
+        let mut offset: u32 = 0;
+        loop {
+            if result.total() >= query.limit || offset > MAX_OFFSET {
+                break;
+            }
+            let body = self.fetch_page(query, offset).await?;
+            let web_len = body.web.as_ref().map_or(0, |s| s.results.len());
+            let news_len = body.news.as_ref().map_or(0, |s| s.results.len());
+            if web_len == 0 && news_len == 0 {
+                break;
+            }
+            if wants_web {
+                push_section(&mut result, SearchSource::Web, body.web, query.limit);
+            }
+            if wants_news {
+                push_section(&mut result, SearchSource::News, body.news, query.limit);
+            }
+            if web_len < MAX_COUNT && news_len < MAX_COUNT {
+                break;
+            }
+            offset = offset.saturating_add(1);
         }
-        if query.sources.contains(&SearchSource::News) {
-            push_section(&mut result, SearchSource::News, body.news, query.limit);
-        }
+
         result.elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
         Ok(result)
+    }
+
+    async fn fetch_page(
+        &self,
+        query: &SearchQuery,
+        offset: u32,
+    ) -> Result<BraveResponse, SearchError> {
+        let endpoint = self.build_endpoint(query, offset)?;
+        retry(&self.retry_policy, || self.request(endpoint.clone())).await
     }
 
     async fn request(&self, endpoint: url::Url) -> Result<BraveResponse, SearchError> {
@@ -135,17 +169,19 @@ impl Brave {
             .map_err(|e| classify_parse(PROVIDER_ID, &e))
     }
 
-    fn build_endpoint(&self, query: &SearchQuery) -> Result<url::Url, SearchError> {
+    fn build_endpoint(&self, query: &SearchQuery, offset: u32) -> Result<url::Url, SearchError> {
         let mut endpoint = self
             .base_url
             .join(SEARCH_PATH)
             .map_err(|e| SearchError::Config {
                 message: format!("cannot build Brave endpoint: {e}"),
             })?;
+        let offset_string = offset.to_string();
         {
             let mut pairs = endpoint.query_pairs_mut();
             pairs.append_pair("q", &query.query);
-            pairs.append_pair("count", &query.limit.min(MAX_COUNT).to_string());
+            pairs.append_pair("count", &MAX_COUNT.to_string());
+            pairs.append_pair("offset", &offset_string);
             pairs.append_pair("safesearch", safesearch_label(query.safesearch));
             if let Some(country) = &query.country {
                 pairs.append_pair("country", country);
@@ -222,7 +258,10 @@ fn push_section(
     limit: usize,
 ) {
     let Some(section) = section else { return };
-    for raw in section.results.into_iter().take(limit) {
+    for raw in section.results {
+        if response.total() >= limit {
+            break;
+        }
         response.push(source, raw.into_hit());
     }
 }
@@ -278,6 +317,7 @@ impl BraveResult {
             description: self.description.filter(|s| !s.is_empty()),
             published_at: self.age,
             engine: None,
+            score: None,
         }
     }
 }
@@ -289,6 +329,7 @@ impl BraveResult {
 )]
 mod tests {
     use pretty_assertions::assert_eq;
+    use serde_json::json;
     use wiremock::matchers::{header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -390,6 +431,64 @@ mod tests {
         let provider = Brave::new("KEY").unwrap();
         let err = provider.search(&SearchQuery::new("")).await.unwrap_err();
         assert!(matches!(err, SearchError::Config { .. }));
+    }
+
+    #[tokio::test]
+    async fn auto_paginates_when_limit_exceeds_page_size() {
+        let server = MockServer::start().await;
+
+        let page_results = (0..MAX_COUNT)
+            .map(|i| json!({ "title": format!("T{i}"), "url": format!("https://p0/{i}") }))
+            .collect::<Vec<_>>();
+        Mock::given(method("GET"))
+            .and(path("/res/v1/web/search"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "web": { "results": page_results }
+            })))
+            .mount(&server)
+            .await;
+
+        let page2_results = (0..5)
+            .map(|i| json!({ "title": format!("T2-{i}"), "url": format!("https://p1/{i}") }))
+            .collect::<Vec<_>>();
+        Mock::given(method("GET"))
+            .and(path("/res/v1/web/search"))
+            .and(query_param("offset", "1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "web": { "results": page2_results }
+            })))
+            .mount(&server)
+            .await;
+
+        let provider = Brave::with_base_url("KEY", server.uri()).unwrap();
+        let query = SearchQuery::new("rust").with_limit(25);
+        let response = provider.search(&query).await.unwrap();
+
+        assert_eq!(response.web.len(), 25);
+        assert_eq!(response.web[0].url, "https://p0/0");
+        assert_eq!(response.web[20].url, "https://p1/0");
+    }
+
+    #[tokio::test]
+    async fn short_page_stops_pagination() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/res/v1/web/search"))
+            .and(query_param("offset", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "web": { "results": [
+                    { "title": "Only", "url": "https://only.io" }
+                ]}
+            })))
+            .mount(&server)
+            .await;
+
+        let provider = Brave::with_base_url("KEY", server.uri()).unwrap();
+        let query = SearchQuery::new("rust").with_limit(100);
+        let response = provider.search(&query).await.unwrap();
+
+        assert_eq!(response.web.len(), 1);
     }
 
     #[tokio::test]

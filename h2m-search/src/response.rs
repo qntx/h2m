@@ -8,6 +8,10 @@ use serde::Serialize;
 use crate::query::SearchSource;
 
 /// A single search result.
+///
+/// Fields marked `Option` are populated on a best-effort basis; providers
+/// that do not expose a piece of data leave it `None` and it is then
+/// omitted from the serialised JSON (`#[serde(skip_serializing_if)]`).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
@@ -25,6 +29,10 @@ pub struct SearchHit {
     /// Upstream engine identifier (`SearXNG` exposes this; others omit it).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub engine: Option<String>,
+    /// Relevance score in `[0, 1]` when the provider supplies one
+    /// (Tavily's ranking signal; other providers leave this `None`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
 }
 
 impl SearchHit {
@@ -37,6 +45,7 @@ impl SearchHit {
             description: None,
             published_at: None,
             engine: None,
+            score: None,
         }
     }
 
@@ -60,6 +69,13 @@ impl SearchHit {
         self.engine = Some(engine.into());
         self
     }
+
+    /// Attaches a relevance score (if the provider supplies one).
+    #[must_use]
+    pub const fn with_score(mut self, score: f64) -> Self {
+        self.score = Some(score);
+        self
+    }
 }
 
 /// Complete search response grouped by source.
@@ -71,6 +87,12 @@ pub struct SearchResponse {
     pub query: String,
     /// Provider identifier that served the request.
     pub provider: &'static str,
+    /// Optional LLM-generated answer (Tavily `include_answer` feature).
+    ///
+    /// `None` when not requested or not supplied by the provider. The
+    /// field is omitted from the serialised JSON when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
     /// Web results.
     pub web: Vec<SearchHit>,
     /// News results.
@@ -88,6 +110,7 @@ impl SearchResponse {
         Self {
             query: query.into(),
             provider,
+            answer: None,
             web: Vec::new(),
             news: Vec::new(),
             images: Vec::new(),

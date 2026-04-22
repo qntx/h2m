@@ -131,6 +131,8 @@ pub struct SearchClientBuilder {
     brave_api_key: Option<SecretString>,
     #[cfg(feature = "tavily")]
     tavily_api_key: Option<SecretString>,
+    #[cfg(feature = "tavily")]
+    tavily_include_answer: bool,
     http: Option<crate::http::HttpConfig>,
     retry: Option<crate::retry::RetryPolicy>,
 }
@@ -164,6 +166,17 @@ impl SearchClientBuilder {
     #[must_use]
     pub fn tavily_api_key(mut self, key: impl Into<SecretString>) -> Self {
         self.tavily_api_key = Some(key.into());
+        self
+    }
+
+    /// Enables Tavily's LLM-generated answer field.
+    ///
+    /// Ignored by other providers. Defaults to `false` because the answer
+    /// costs extra Tavily credits per request.
+    #[cfg(feature = "tavily")]
+    #[must_use]
+    pub const fn tavily_include_answer(mut self, include: bool) -> Self {
+        self.tavily_include_answer = include;
         self
     }
 
@@ -238,7 +251,8 @@ impl SearchClientBuilder {
                         provider: "tavily",
                         env_var: ENV_TAVILY_API_KEY,
                     })?;
-                let mut b = crate::providers::tavily::Tavily::builder(key);
+                let mut b = crate::providers::tavily::Tavily::builder(key)
+                    .include_answer(self.tavily_include_answer);
                 if let Some(http) = self.http {
                     b = b.http(http);
                 }

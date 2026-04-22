@@ -119,7 +119,16 @@ h2m search "rust async trait" --json             # NDJSON (one hit per line)
 h2m search "rust" --limit 5 --time-range week
 h2m search "rust" --sources web,news --country us
 h2m search "rust" --provider brave               # switch provider
+h2m search "rust" --provider tavily --include-answer  # LLM-generated summary
 ```
+
+Tips:
+
+- **Windows + system proxy** — if your system proxy intercepts `localhost`
+  requests (Clash/V2Ray/etc), set `NO_PROXY=127.0.0.1,localhost` before
+  pointing `h2m` at a self-hosted SearXNG instance.
+- **Brave pagination** — `--limit` up to 200 is supported (Brave caps at
+  20 per page; `h2m` paginates transparently via `offset`).
 
 Search + scrape (runs every hit through the full `convert` pipeline,
 streams NDJSON ScrapeResults):
@@ -158,15 +167,25 @@ h2m search "rust" --scrape -j 8 --timeout 20     # parallel scrape
 ```json
 {
   "query": "rust async",
-  "provider": "searxng",
+  "provider": "tavily",
+  "answer": "Rust's async trait support stabilized in 1.75 ...",
   "web": [
-    {"title": "Rust", "url": "https://rust-lang.org", "description": "...", "engine": "duckduckgo"}
+    {
+      "title": "Rust", "url": "https://rust-lang.org",
+      "description": "...", "engine": "duckduckgo", "score": 0.92
+    }
   ],
   "news": [],
   "images": [],
   "elapsedMs": 312
 }
 ```
+
+- `answer` — LLM-generated summary (Tavily `--include-answer` flag, opt-in).
+- `score` — relevance in `[0, 1]` (Tavily only; other providers omit it).
+- `engine` — upstream backend name (SearXNG only; aggregators omit it).
+
+Fields marked `Option` are dropped from the JSON when absent, keeping output lean.
 
 Multiple inputs (convert batch, or `search --scrape`) stream NDJSON — one JSON object per line.
 

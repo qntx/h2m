@@ -8,6 +8,6 @@ jobs:
   publish:
     uses: qntx/workflows/.github/workflows/publish-crates.yml@main
     with:
-      packages: "h2m h2m-cli"
+      packages: "h2m h2m-search h2m-cli"
     secrets:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

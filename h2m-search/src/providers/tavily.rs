@@ -54,6 +54,7 @@ pub struct Tavily {
     api_key: SecretString,
     retry_policy: RetryPolicy,
     topic_override: Option<TavilyTopic>,
+    include_answer: bool,
 }
 
 impl std::fmt::Debug for Tavily {
@@ -63,6 +64,7 @@ impl std::fmt::Debug for Tavily {
             .field("api_key", &self.api_key)
             .field("retry_policy", &self.retry_policy)
             .field("topic_override", &self.topic_override)
+            .field("include_answer", &self.include_answer)
             .finish_non_exhaustive()
     }
 }
@@ -99,6 +101,7 @@ impl Tavily {
             http: None,
             retry: None,
             topic: None,
+            include_answer: false,
         }
     }
 
@@ -138,6 +141,7 @@ impl Tavily {
             max_results: query.limit.min(MAX_RESULTS),
             search_depth: "basic",
             include_domains: None,
+            include_answer: self.include_answer,
             time_range: query.time_range.map(time_range_label),
             topic: topic.as_str(),
             country: query.country.as_deref(),
@@ -149,6 +153,7 @@ impl Tavily {
         .await?;
 
         let mut result = SearchResponse::new(&query.query, PROVIDER_ID);
+        result.answer = parsed.answer.filter(|s| !s.is_empty());
         let target_source = match topic {
             TavilyTopic::News => SearchSource::News,
             TavilyTopic::General | TavilyTopic::Finance => SearchSource::Web,
@@ -195,6 +200,7 @@ pub struct TavilyBuilder {
     http: Option<HttpConfig>,
     retry: Option<RetryPolicy>,
     topic: Option<TavilyTopic>,
+    include_answer: bool,
 }
 
 impl TavilyBuilder {
@@ -227,6 +233,17 @@ impl TavilyBuilder {
         self
     }
 
+    /// Enables Tavily's LLM-generated `answer` in the response.
+    ///
+    /// Defaults to `false` because it consumes additional Tavily credits.
+    /// When enabled, the synthesised answer is returned via
+    /// [`SearchResponse::answer`](crate::SearchResponse::answer).
+    #[must_use]
+    pub const fn include_answer(mut self, include: bool) -> Self {
+        self.include_answer = include;
+        self
+    }
+
     /// Builds the provider.
     ///
     /// # Errors
@@ -247,6 +264,7 @@ impl TavilyBuilder {
             api_key: self.api_key,
             retry_policy: self.retry.unwrap_or_default(),
             topic_override: self.topic,
+            include_answer: self.include_answer,
         })
     }
 }
@@ -278,6 +296,7 @@ struct TavilyRequest<'a> {
     search_depth: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     include_domains: Option<Vec<String>>,
+    include_answer: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     time_range: Option<&'static str>,
     topic: &'static str,
@@ -289,6 +308,8 @@ struct TavilyRequest<'a> {
 struct TavilyResponse {
     #[serde(default)]
     results: Vec<TavilyResult>,
+    #[serde(default)]
+    answer: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -301,6 +322,8 @@ struct TavilyResult {
     content: Option<String>,
     #[serde(default)]
     published_date: Option<String>,
+    #[serde(default)]
+    score: Option<f64>,
 }
 
 impl TavilyResult {
@@ -311,6 +334,7 @@ impl TavilyResult {
             description: self.content.filter(|s| !s.is_empty()),
             published_at: self.published_date,
             engine: None,
+            score: self.score,
         }
     }
 }
@@ -453,6 +477,70 @@ mod tests {
                 status: 403
             }
         ));
+    }
+
+    #[tokio::test]
+    async fn include_answer_defaults_to_false() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/search"))
+            .and(body_partial_json(
+                serde_json::json!({ "include_answer": false }),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": []
+            })))
+            .mount(&server)
+            .await;
+
+        let provider = Tavily::with_base_url("tvly-KEY", server.uri()).unwrap();
+        let response = provider.search(&SearchQuery::new("q")).await.unwrap();
+        assert!(response.answer.is_none());
+    }
+
+    #[tokio::test]
+    async fn include_answer_round_trip_populates_response_answer() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/search"))
+            .and(body_partial_json(
+                serde_json::json!({ "include_answer": true }),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "answer": "Rust is a systems programming language.",
+                "results": []
+            })))
+            .mount(&server)
+            .await;
+
+        let provider = Tavily::builder("tvly-KEY")
+            .base_url(server.uri())
+            .include_answer(true)
+            .build()
+            .unwrap();
+        let response = provider.search(&SearchQuery::new("rust")).await.unwrap();
+        assert_eq!(
+            response.answer.as_deref(),
+            Some("Rust is a systems programming language.")
+        );
+    }
+
+    #[tokio::test]
+    async fn score_field_propagates_to_search_hit() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/search"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [
+                    { "title": "Rust", "url": "https://r.io", "score": 0.87 }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let provider = Tavily::with_base_url("tvly-KEY", server.uri()).unwrap();
+        let response = provider.search(&SearchQuery::new("rust")).await.unwrap();
+        assert_eq!(response.web[0].score, Some(0.87));
     }
 
     #[tokio::test]

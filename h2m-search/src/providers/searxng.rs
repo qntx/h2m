@@ -257,6 +257,7 @@ impl SearxngResult {
             description: self.content.filter(|s| !s.is_empty()),
             published_at: self.published_date,
             engine: self.engine,
+            score: None,
         }
     }
 }
