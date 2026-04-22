@@ -20,8 +20,12 @@ use std::time::Duration;
 
 use h2m_search::{HttpConfig, RetryPolicy, SearchClient, SearchError, SearchQuery, SecretString};
 use insta as _;
+#[cfg(any(feature = "duckduckgo", feature = "wikipedia"))]
+use percent_encoding as _;
 use pretty_assertions as _;
 use reqwest as _;
+#[cfg(feature = "duckduckgo")]
+use scraper as _;
 use serde as _;
 use thiserror as _;
 use tokio as _;

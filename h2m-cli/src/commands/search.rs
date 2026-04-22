@@ -21,8 +21,11 @@ pub(crate) struct SearchArgs {
     /// The search query.
     pub query: String,
 
-    /// Search provider (`searxng` is the default).
-    #[arg(short = 'p', long, default_value = "searxng")]
+    /// Search provider. Defaults to `duckduckgo` (zero-config, no API key).
+    ///
+    /// Valid values: `duckduckgo` (alias `ddg`), `wikipedia` (alias `wiki`),
+    /// `searxng`, `brave`, `tavily`. Override with `H2M_SEARCH_PROVIDER`.
+    #[arg(short = 'p', long, default_value = "duckduckgo")]
     pub provider: String,
 
     /// Maximum number of results per source (1..=100).
@@ -51,14 +54,23 @@ pub(crate) struct SearchArgs {
 
     /// `SearXNG` base URL (overrides `H2M_SEARXNG_URL`).
     #[arg(long)]
+    #[cfg(feature = "searxng")]
     pub searxng_url: Option<String>,
+
+    /// Wikipedia language edition (e.g. `en`, `zh`, `ja`). Default: `en`.
+    ///
+    /// Only applies to `--provider wikipedia`. Per-request `--language`
+    /// takes precedence if both are set.
+    #[arg(long)]
+    pub wikipedia_lang: Option<String>,
 
     /// Request Tavily's LLM-generated answer alongside results.
     ///
-    /// Only applies to the Tavily provider; `SearXNG` and Brave ignore it.
-    /// The answer (when present) is surfaced as `answer` in the JSON
-    /// response. Tavily charges extra credits for this feature.
+    /// Only applies to the Tavily provider. The answer (when present) is
+    /// surfaced as `answer` in the JSON response. Tavily charges extra
+    /// credits for this feature.
     #[arg(long)]
+    #[cfg(feature = "tavily")]
     pub include_answer: bool,
 
     /// After search, scrape each hit and emit a `ScrapeResult` per line (NDJSON).
@@ -108,9 +120,14 @@ impl SearchArgs {
 
     fn build_client(&self) -> Result<SearchClient, CliError> {
         let mut builder = SearchClient::builder().provider(&self.provider);
+        #[cfg(feature = "searxng")]
         if let Some(url) = &self.searxng_url {
             builder = builder.searxng_url(url);
         }
+        if let Some(lang) = &self.wikipedia_lang {
+            builder = builder.wikipedia_language(lang);
+        }
+        #[cfg(feature = "tavily")]
         if self.include_answer {
             builder = builder.tavily_include_answer(true);
         }

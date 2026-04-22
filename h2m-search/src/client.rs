@@ -34,6 +34,12 @@ pub const ENV_TAVILY_API_KEY: &str = "TAVILY_API_KEY";
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum SearchClient {
+    /// `DuckDuckGo` zero-config HTML-scraping provider (default).
+    #[cfg(feature = "duckduckgo")]
+    DuckDuckGo(crate::providers::duckduckgo::DuckDuckGo),
+    /// Wikipedia `MediaWiki` Search API provider.
+    #[cfg(feature = "wikipedia")]
+    Wikipedia(crate::providers::wikipedia::Wikipedia),
     /// `SearXNG` metasearch provider.
     #[cfg(feature = "searxng")]
     SearXNG(crate::providers::searxng::SearXNG),
@@ -55,9 +61,10 @@ impl SearchClient {
     /// Builds a client by inspecting environment variables.
     ///
     /// Resolution order:
-    /// 1. `H2M_SEARCH_PROVIDER` selects the provider (defaults to `searxng`).
+    /// 1. `H2M_SEARCH_PROVIDER` selects the provider (defaults to `duckduckgo`).
     /// 2. Provider-specific variables supply credentials / endpoints
     ///    (`H2M_SEARXNG_URL`, `BRAVE_API_KEY`, `TAVILY_API_KEY`).
+    ///    `duckduckgo` and `wikipedia` require nothing — zero-config.
     ///
     /// # Errors
     ///
@@ -88,10 +95,14 @@ impl SearchClient {
         builder.build()
     }
 
-    /// Returns the provider identifier (`"searxng"`, …).
+    /// Returns the provider identifier (`"duckduckgo"`, `"wikipedia"`, …).
     #[must_use]
     pub const fn id(&self) -> &'static str {
         match self {
+            #[cfg(feature = "duckduckgo")]
+            Self::DuckDuckGo(_) => "duckduckgo",
+            #[cfg(feature = "wikipedia")]
+            Self::Wikipedia(_) => "wikipedia",
             #[cfg(feature = "searxng")]
             Self::SearXNG(_) => "searxng",
             #[cfg(feature = "brave")]
@@ -108,6 +119,10 @@ impl SearchClient {
     /// Propagates whatever the underlying provider returns.
     pub async fn search(&self, query: &SearchQuery) -> Result<SearchResponse, SearchError> {
         match self {
+            #[cfg(feature = "duckduckgo")]
+            Self::DuckDuckGo(p) => p.search(query).await,
+            #[cfg(feature = "wikipedia")]
+            Self::Wikipedia(p) => p.search(query).await,
             #[cfg(feature = "searxng")]
             Self::SearXNG(p) => p.search(query).await,
             #[cfg(feature = "brave")]
@@ -133,6 +148,8 @@ pub struct SearchClientBuilder {
     tavily_api_key: Option<SecretString>,
     #[cfg(feature = "tavily")]
     tavily_include_answer: bool,
+    #[cfg(feature = "wikipedia")]
+    wikipedia_language: Option<String>,
     http: Option<crate::http::HttpConfig>,
     retry: Option<crate::retry::RetryPolicy>,
 }
@@ -180,6 +197,17 @@ impl SearchClientBuilder {
         self
     }
 
+    /// Sets the Wikipedia language edition (e.g. `"en"`, `"zh"`).
+    ///
+    /// Per-query [`SearchQuery::language`](crate::SearchQuery::language)
+    /// still wins when both are set. Defaults to `en`.
+    #[cfg(feature = "wikipedia")]
+    #[must_use]
+    pub fn wikipedia_language(mut self, lang: impl Into<String>) -> Self {
+        self.wikipedia_language = Some(lang.into());
+        self
+    }
+
     /// Supplies a shared [`HttpConfig`](crate::HttpConfig) used by the
     /// selected provider. When omitted, each provider constructs its own.
     #[must_use]
@@ -209,6 +237,31 @@ impl SearchClientBuilder {
             .unwrap_or_else(|| default_provider().into());
 
         match name.trim().to_ascii_lowercase().as_str() {
+            #[cfg(feature = "duckduckgo")]
+            "duckduckgo" | "ddg" => {
+                let mut b = crate::providers::duckduckgo::DuckDuckGo::builder();
+                if let Some(http) = self.http {
+                    b = b.http(http);
+                }
+                if let Some(retry) = self.retry {
+                    b = b.retry(retry);
+                }
+                Ok(SearchClient::DuckDuckGo(b.build()?))
+            }
+            #[cfg(feature = "wikipedia")]
+            "wikipedia" | "wiki" => {
+                let mut b = crate::providers::wikipedia::Wikipedia::builder();
+                if let Some(lang) = self.wikipedia_language {
+                    b = b.language(lang);
+                }
+                if let Some(http) = self.http {
+                    b = b.http(http);
+                }
+                if let Some(retry) = self.retry {
+                    b = b.retry(retry);
+                }
+                Ok(SearchClient::Wikipedia(b.build()?))
+            }
             #[cfg(feature = "searxng")]
             "searxng" => {
                 let url = self
@@ -269,11 +322,27 @@ impl SearchClientBuilder {
 }
 
 const fn default_provider() -> &'static str {
-    #[cfg(feature = "searxng")]
+    #[cfg(feature = "duckduckgo")]
+    {
+        "duckduckgo"
+    }
+    #[cfg(all(not(feature = "duckduckgo"), feature = "wikipedia"))]
+    {
+        "wikipedia"
+    }
+    #[cfg(all(
+        not(feature = "duckduckgo"),
+        not(feature = "wikipedia"),
+        feature = "searxng"
+    ))]
     {
         "searxng"
     }
-    #[cfg(not(feature = "searxng"))]
+    #[cfg(all(
+        not(feature = "duckduckgo"),
+        not(feature = "wikipedia"),
+        not(feature = "searxng")
+    ))]
     {
         ""
     }
@@ -309,5 +378,41 @@ mod tests {
     fn unknown_provider_errors() {
         let err = SearchClient::from_provider_name("yahoo").unwrap_err();
         assert!(matches!(err, SearchError::ProviderUnavailable { .. }));
+    }
+
+    #[test]
+    #[cfg(feature = "duckduckgo")]
+    fn duckduckgo_is_the_default_provider() {
+        // SAFETY: tests run sequentially; resetting env vars is fine.
+        // We only assert the default string, not that env is pristine.
+        assert_eq!(default_provider(), "duckduckgo");
+    }
+
+    #[test]
+    #[cfg(feature = "duckduckgo")]
+    fn builder_creates_duckduckgo_with_no_config() {
+        let client = SearchClient::builder()
+            .provider("duckduckgo")
+            .build()
+            .unwrap();
+        assert_eq!(client.id(), "duckduckgo");
+    }
+
+    #[test]
+    #[cfg(feature = "wikipedia")]
+    fn builder_creates_wikipedia_with_custom_language() {
+        let client = SearchClient::builder()
+            .provider("wikipedia")
+            .wikipedia_language("zh")
+            .build()
+            .unwrap();
+        assert_eq!(client.id(), "wikipedia");
+    }
+
+    #[test]
+    #[cfg(feature = "duckduckgo")]
+    fn ddg_alias_resolves_to_duckduckgo() {
+        let client = SearchClient::builder().provider("ddg").build().unwrap();
+        assert_eq!(client.id(), "duckduckgo");
     }
 }

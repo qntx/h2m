@@ -1,6 +1,9 @@
 //! # h2m-search
 //!
-//! Web search provider abstraction for [`h2m`](https://crates.io/crates/h2m).
+//! Zero-config web search provider abstraction for
+//! [`h2m`](https://crates.io/crates/h2m). The default providers
+//! (`duckduckgo`, `wikipedia`) need **no API key** and **no environment
+//! variables** — `SearchClient::from_env()` works out of the box.
 //!
 //! Provides a unified interface over multiple search backends. The design
 //! mirrors the Firecrawl `/search` endpoint — default results carry only
@@ -12,12 +15,14 @@
 //! Each provider lives behind a Cargo feature so binaries can opt into exactly
 //! the backends they need:
 //!
-//! | Feature   | Provider | Requires              | Default |
-//! | --------- | -------- | --------------------- | ------- |
-//! | `searxng` | `SearXNG`  | `H2M_SEARXNG_URL`     | yes     |
-//! | `brave`   | Brave    | `BRAVE_API_KEY`       | no      |
-//! | `tavily`  | Tavily   | `TAVILY_API_KEY`      | no      |
-//! | `all`     | —        | aggregates the above  | no      |
+//! | Feature       | Provider     | Requires              | Default |
+//! | ------------- | ------------ | --------------------- | ------- |
+//! | `duckduckgo`  | `DuckDuckGo` | — (zero-config)      | **yes** |
+//! | `wikipedia`   | Wikipedia    | — (zero-config)      | **yes** |
+//! | `searxng`     | `SearXNG`    | `H2M_SEARXNG_URL`     | no      |
+//! | `brave`       | Brave        | `BRAVE_API_KEY`       | no      |
+//! | `tavily`      | Tavily       | `TAVILY_API_KEY`      | no      |
+//! | `all`         | —            | aggregates the above  | no      |
 //!
 //! ## Quick start
 //!
@@ -25,6 +30,7 @@
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! use h2m_search::{SearchClient, SearchQuery};
 //!
+//! // Zero configuration: defaults to DuckDuckGo, no env vars needed.
 //! let client = SearchClient::from_env()?;
 //! let response = client
 //!     .search(&SearchQuery::new("rust async trait").with_limit(5))
@@ -39,9 +45,15 @@
 
 #![deny(unsafe_code)]
 
-#[cfg(not(any(feature = "searxng", feature = "brave", feature = "tavily")))]
+#[cfg(not(any(
+    feature = "duckduckgo",
+    feature = "wikipedia",
+    feature = "searxng",
+    feature = "brave",
+    feature = "tavily"
+)))]
 compile_error!(
-    "h2m-search requires at least one provider feature: 'searxng' (default), 'brave', or 'tavily'"
+    "h2m-search requires at least one provider feature: 'duckduckgo' (default), 'wikipedia' (default), 'searxng', 'brave', or 'tavily'"
 );
 
 mod client;

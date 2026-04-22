@@ -71,6 +71,26 @@ pub enum SearchError {
         message: String,
     },
 
+    /// HTML scraping detected an anti-bot challenge (e.g. `DuckDuckGo` CAPTCHA).
+    ///
+    /// Retryable: callers can back off and try again with rotated UA or a
+    /// fallback endpoint.
+    #[error("{provider} served an anti-bot challenge; try again or switch provider")]
+    CaptchaDetected {
+        /// Provider identifier.
+        provider: &'static str,
+    },
+
+    /// HTML/JSON parsing failed — upstream changed its layout or returned
+    /// unexpected content. Not retryable: the selectors need updating.
+    #[error("failed to parse {provider} response: {message}")]
+    ParseFailed {
+        /// Provider identifier.
+        provider: &'static str,
+        /// Human-readable description.
+        message: String,
+    },
+
     /// Requested provider is not compiled into this build.
     #[error("provider '{name}' is not available (missing feature flag)")]
     ProviderUnavailable {
@@ -96,7 +116,9 @@ impl SearchError {
             | Self::RateLimited { provider, .. }
             | Self::AuthFailed { provider, .. }
             | Self::MissingApiKey { provider, .. }
-            | Self::InvalidResponse { provider, .. } => Some(provider),
+            | Self::InvalidResponse { provider, .. }
+            | Self::CaptchaDetected { provider }
+            | Self::ParseFailed { provider, .. } => Some(provider),
             Self::MissingSearxngUrl | Self::ProviderUnavailable { .. } | Self::Config { .. } => {
                 None
             }
@@ -124,6 +146,8 @@ impl SearchError {
             Self::MissingApiKey { .. } => "missingApiKey",
             Self::MissingSearxngUrl => "missingSearxngUrl",
             Self::InvalidResponse { .. } => "invalidResponse",
+            Self::CaptchaDetected { .. } => "captchaDetected",
+            Self::ParseFailed { .. } => "parseFailed",
             Self::ProviderUnavailable { .. } => "providerUnavailable",
             Self::Config { .. } => "config",
         }
@@ -137,7 +161,10 @@ impl SearchError {
     pub const fn is_retryable(&self) -> bool {
         matches!(
             self,
-            Self::Transport { .. } | Self::ServerError { .. } | Self::RateLimited { .. }
+            Self::Transport { .. }
+                | Self::ServerError { .. }
+                | Self::RateLimited { .. }
+                | Self::CaptchaDetected { .. }
         )
     }
 }

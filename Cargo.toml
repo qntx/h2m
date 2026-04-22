@@ -4,7 +4,7 @@ default-members = ["h2m"]
 resolver = "3"
 
 [workspace.package]
-version = "0.6.1"
+version = "0.7.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/qntx/h2m"
@@ -14,14 +14,15 @@ categories = ["command-line-utilities"]
 readme = "README.md"
 
 [workspace.dependencies]
-h2m = { version = "0.6", path = "h2m" }
-h2m-search = { version = "0.6", path = "h2m-search" }
+h2m = { version = "0.7", path = "h2m" }
+h2m-search = { version = "0.7", path = "h2m-search" }
 
 scraper = "0.26"
 ego-tree = "0.11"
+percent-encoding = "2"
 thiserror = "2"
 clap = { version = "4", features = ["derive"] }
-reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "query"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

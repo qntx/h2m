@@ -5,19 +5,23 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 readme.workspace = true
-description = "Web search provider abstraction for h2m (SearXNG, Brave, Tavily)."
-keywords = ["search", "searxng", "brave", "tavily", "h2m"]
+description = "Zero-config web search for h2m (DuckDuckGo, Wikipedia, SearXNG, Brave, Tavily)."
+keywords = ["search", "duckduckgo", "wikipedia", "searxng", "h2m"]
 categories = ["web-programming", "command-line-utilities"]
 
 [features]
-default = ["searxng"]
+default = ["duckduckgo", "wikipedia"]
+duckduckgo = ["dep:scraper", "dep:percent-encoding"]
+wikipedia = ["dep:percent-encoding"]
 searxng = []
 brave = []
 tavily = []
-all = ["searxng", "brave", "tavily"]
+all = ["duckduckgo", "wikipedia", "searxng", "brave", "tavily"]
 
 [dependencies]
 reqwest.workspace = true
+scraper = { workspace = true, optional = true }
+percent-encoding = { workspace = true, optional = true }
 serde.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["time"] }

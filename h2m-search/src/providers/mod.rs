@@ -9,14 +9,22 @@ mod common;
 
 #[cfg(feature = "brave")]
 pub mod brave;
+#[cfg(feature = "duckduckgo")]
+pub mod duckduckgo;
 #[cfg(feature = "searxng")]
 pub mod searxng;
 #[cfg(feature = "tavily")]
 pub mod tavily;
+#[cfg(feature = "wikipedia")]
+pub mod wikipedia;
 
 #[cfg(feature = "brave")]
 pub use brave::Brave;
+#[cfg(feature = "duckduckgo")]
+pub use duckduckgo::DuckDuckGo;
 #[cfg(feature = "searxng")]
 pub use searxng::SearXNG;
 #[cfg(feature = "tavily")]
 pub use tavily::Tavily;
+#[cfg(feature = "wikipedia")]
+pub use wikipedia::Wikipedia;

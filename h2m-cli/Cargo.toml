@@ -15,8 +15,15 @@ path = "src/main.rs"
 
 [features]
 default = ["search"]
+# Pulls the `h2m-search` crate with its default providers (`duckduckgo` + `wikipedia`).
 search = ["dep:h2m-search"]
-all-providers = ["search", "h2m-search/all"]
+# Opt-in extra providers. Each mirrors an h2m-search feature so that CLI code
+# can use `#[cfg(feature = "X")]` consistently when referencing provider-
+# specific builder methods.
+searxng = ["search", "h2m-search/searxng"]
+brave = ["search", "h2m-search/brave"]
+tavily = ["search", "h2m-search/tavily"]
+all-providers = ["search", "searxng", "brave", "tavily"]
 
 [dependencies]
 h2m = { workspace = true, features = ["scrape"] }
