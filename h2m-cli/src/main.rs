@@ -1,82 +1,49 @@
-//! h2m — HTML to Markdown converter CLI.
+//! `h2m` — HTML-to-Markdown converter CLI with optional web search.
 //!
-//! The CLI exposes two subcommands:
+//! The CLI is a subcommand tree:
 //!
 //! - `h2m convert <INPUT>…` — convert HTML from URLs, files, or stdin
-//! - `h2m search <QUERY>` — run a web search, optionally piping results
-//!   through the existing scrape pipeline (requires the `search` feature)
+//! - `h2m search <QUERY>` — run a web search, optionally scrape each hit
+//!
+//! See [`cli`] for the root parser, [`commands`] for subcommand modules,
+//! and [`shared`] for argument groups shared between subcommands.
 //!
 //! # Examples
 //!
 //! ```sh
-//! # Convert a URL
 //! h2m convert https://example.com
-//!
-//! # Convert a local file with GFM
 //! h2m convert --gfm page.html
-//!
-//! # Pipe from curl, extract only <article>
 //! curl -s https://blog.example.com/post | h2m convert --selector article
-//!
-//! # JSON for agent consumption
-//! h2m convert --json https://example.com
-//!
-//! # Batch convert (NDJSON streaming)
 //! h2m convert --json url1 url2 url3
-//!
-//! # Web search (requires H2M_SEARXNG_URL env var for the default provider)
 //! h2m search "rust async trait" --limit 5
-//!
-//! # Search + scrape each hit to Markdown (NDJSON)
 //! h2m search "rust async" --scrape --gfm --readable
 //! ```
 
 #![allow(
     clippy::print_stderr,
-    clippy::shadow_reuse,
-    reason = "CLI binary uses stderr for diagnostics and shadow rebinding for option building"
+    reason = "CLI binary uses stderr for diagnostics"
 )]
 
 mod cli;
-mod convert;
+mod commands;
 mod error;
 mod output;
-#[cfg(feature = "search")]
-mod search;
+mod shared;
 
 use std::process::ExitCode;
 
 use clap::Parser;
 
-use crate::cli::{Cli, Command};
+use crate::cli::Cli;
 
 #[tokio::main]
 async fn main() -> ExitCode {
     let cli = Cli::parse();
-    let result = match &cli.command {
-        Command::Convert(args) => convert::run(args).await,
-        #[cfg(feature = "search")]
-        Command::Search(args) => search::run(args).await,
-    };
-
-    match result {
+    match cli.command.run().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            report_error(&cli.command, &e);
+            cli.command.report_error(&e);
             ExitCode::FAILURE
         }
-    }
-}
-
-fn report_error(command: &Command, err: &error::CliError) {
-    let is_json = match command {
-        Command::Convert(args) => args.json,
-        #[cfg(feature = "search")]
-        Command::Search(args) => args.json || args.scrape,
-    };
-    if is_json {
-        output::emit_json_error(&err.to_string(), err.url());
-    } else {
-        eprintln!("error: {err}");
     }
 }
