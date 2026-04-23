@@ -12,6 +12,9 @@ readme.workspace = true
 [[bin]]
 name = "h2m"
 path = "src/main.rs"
+# Skip rustdoc for the CLI binary: its output dir (`target/doc/h2m/`)
+# collides with the `h2m` library crate (see rust-lang/cargo#6313).
+doc = false
 
 [features]
 default = ["search"]

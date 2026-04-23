@@ -160,20 +160,16 @@ impl SearchClient {
     /// Builds a client for the named provider, reading credentials from the
     /// environment.
     ///
+    /// Shorthand for `SearchClient::builder().provider(name).build()`. The
+    /// builder already consults the same environment variables
+    /// ([`ENV_SEARXNG_URL`], [`ENV_BRAVE_API_KEY`], [`ENV_TAVILY_API_KEY`])
+    /// — this method exists purely for the one-liner call site.
+    ///
     /// # Errors
     ///
     /// See [`SearchClient::from_env`].
     pub fn from_provider_name(name: &str) -> Result<Self, SearchError> {
-        let builder = Self::builder().provider(name);
-        #[cfg(feature = "searxng")]
-        let builder = if name.trim().eq_ignore_ascii_case("searxng")
-            && let Ok(url) = env::var(ENV_SEARXNG_URL)
-        {
-            builder.searxng_url(url)
-        } else {
-            builder
-        };
-        builder.build()
+        Self::builder().provider(name).build()
     }
 
     /// Returns the [`ProviderId`] of the configured backend.

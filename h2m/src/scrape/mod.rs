@@ -163,7 +163,7 @@ impl ScraperBuilder {
             .user_agent(&self.user_agent)
             .timeout(self.timeout)
             .build()
-            .map_err(|e| ScrapeError::new(format!("failed to build HTTP client: {e}"), None))?;
+            .map_err(|e| ScrapeError::other(format!("failed to build HTTP client: {e}"), None))?;
 
         let mut builder = Converter::builder()
             .options(self.options)
@@ -262,7 +262,9 @@ impl Scraper {
         for handle in handles {
             match handle.await {
                 Ok(result) => results.push(result),
-                Err(e) => results.push(Err(ScrapeError::new(format!("task panicked: {e}"), None))),
+                Err(e) => {
+                    results.push(Err(ScrapeError::other(format!("task panicked: {e}"), None)));
+                }
             }
         }
         results

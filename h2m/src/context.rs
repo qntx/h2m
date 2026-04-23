@@ -252,18 +252,16 @@ impl<'a> Context<'a> {
 }
 
 /// Returns the number of decimal digits in `n`.
+///
+/// Uses the stable [`usize::checked_ilog10`] (≥ 1.67), which returns `None`
+/// for `0` — we treat that as a single digit to match the old hand-written
+/// loop's behaviour.
 #[inline]
 const fn digit_count(n: usize) -> usize {
-    if n == 0 {
-        return 1;
+    match n.checked_ilog10() {
+        Some(log) => log as usize + 1,
+        None => 1,
     }
-    let mut count = 0;
-    let mut val = n;
-    while val > 0 {
-        val /= 10;
-        count += 1;
-    }
-    count
 }
 
 #[cfg(test)]

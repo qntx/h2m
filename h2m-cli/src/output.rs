@@ -128,7 +128,7 @@ impl Drop for OutputSink {
 
 /// Prints a JSON error object for the `convert` pipeline (always stdout).
 pub(crate) fn emit_json_error(msg: &str, url: Option<&str>) {
-    let e = ScrapeError::new(msg, url.map(str::to_owned));
+    let e = ScrapeError::other(msg, url.map(str::to_owned));
     if let Ok(s) = serde_json::to_string_pretty(&e) {
         let stdout = io::stdout();
         let mut out = stdout.lock();

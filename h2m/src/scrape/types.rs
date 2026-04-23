@@ -126,9 +126,12 @@ pub enum ScrapeError {
 }
 
 impl ScrapeError {
-    /// Creates a new [`ScrapeError::Other`] with a message and optional URL.
+    /// Creates a [`ScrapeError::Other`] with a message and optional URL.
+    ///
+    /// Renamed from `new` in 0.8 because it only constructs a single
+    /// variant — the old name suggested it was a primary constructor.
     #[must_use]
-    pub fn new(message: impl Into<String>, url: Option<String>) -> Self {
+    pub fn other(message: impl Into<String>, url: Option<String>) -> Self {
         Self::Other {
             message: message.into(),
             url,
