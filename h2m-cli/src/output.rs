@@ -135,3 +135,17 @@ pub(crate) fn emit_json_error(msg: &str, url: Option<&str>) {
         _ = writeln!(out, "{s}");
     }
 }
+
+/// Prints a structured JSON error object for `search` failures.
+///
+/// Preserves the `kind` / `provider` / `status` fields that `SearchError`'s
+/// `Serialize` impl emits, so downstream tools can distinguish CAPTCHA /
+/// parse / rate-limit / auth failures without string parsing.
+#[cfg(feature = "search")]
+pub(crate) fn emit_search_json_error(err: &h2m_search::SearchError) {
+    if let Ok(s) = serde_json::to_string_pretty(err) {
+        let stdout = io::stdout();
+        let mut out = stdout.lock();
+        _ = writeln!(out, "{s}");
+    }
+}

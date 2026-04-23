@@ -21,7 +21,7 @@
 
 **Fast, extensible HTML-to-Markdown converter with optional web search — CommonMark + GFM, plugin architecture.**
 
-H2M converts HTML into clean Markdown with full CommonMark compliance and GitHub Flavored Markdown extensions. It uses a plugin-based rule system, supports reference-style links, relative URL resolution, and ships with an async CLI that can also **search the web** and pipe results through the same conversion pipeline (compatible with SearXNG, Brave Search, and Tavily).
+H2M converts HTML into clean Markdown with full CommonMark compliance and GitHub Flavored Markdown extensions. It uses a plugin-based rule system, supports reference-style links, relative URL resolution, and ships with an async CLI that can also **search the web** and pipe results through the same conversion pipeline. Search works **zero-config out of the box** via DuckDuckGo and Wikipedia, and also integrates with SearXNG, Brave Search, and Tavily.
 
 <p align="center">
   <img src="demo.gif" alt="H2M CLI Demo"/>
@@ -99,31 +99,52 @@ h2m convert -o output.md https://example.com
 
 ### `search` — Web search
 
-H2M supports three search providers. Pick one via `--provider` or the
-`H2M_SEARCH_PROVIDER` environment variable:
+H2M ships with **five** search providers. The default is `duckduckgo`, which
+requires no API key, no registration, and no environment variables:
 
-| Provider | Requires          | Free tier       | Notes                            |
-| -------- | ----------------- | --------------- | -------------------------------- |
-| SearXNG  | `H2M_SEARXNG_URL` | yes (self-host) | Default. Open-source meta-search |
-| Brave    | `BRAVE_API_KEY`   | $5/month credit | Independent index                |
-| Tavily   | `TAVILY_API_KEY`  | 1000 req/month  | AI-tuned snippets                |
+| Provider   | Requires          | Free tier       | Notes                                      |
+| ---------- | ----------------- | --------------- | ------------------------------------------ |
+| DuckDuckGo | - (zero-config)   | unlimited\*     | **Default.** HTML scraping + lite fallback |
+| Wikipedia  | - (zero-config)   | unlimited       | Official MediaWiki API, 300+ languages     |
+| SearXNG    | `H2M_SEARXNG_URL` | yes (self-host) | Open-source meta-search                    |
+| Brave      | `BRAVE_API_KEY`   | $5/month credit | Independent index, transparent pagination  |
+| Tavily     | `TAVILY_API_KEY`  | 1000 req/month  | AI-tuned snippets + LLM answers            |
 
-Pure search (returns titles/URLs/descriptions):
+\* DuckDuckGo uses unauthenticated HTML endpoints. Aggressive or datacenter
+traffic may trigger anti-bot challenges; the provider auto-falls back to
+`lite.duckduckgo.com` and emits a structured `"kind":"captchaDetected"` error
+so you can automate provider switching. Wikipedia is the recommended fallback.
+
+Zero-config usage (nothing to configure, runs immediately):
 
 ```bash
-# Point at any SearXNG instance (self-host or public)
-export H2M_SEARXNG_URL=https://searx.example.org
+h2m search "rust async trait"                       # DuckDuckGo (default)
+h2m search "Turing machine" --provider wikipedia    # official MediaWiki API
+h2m search "图灵机" --provider wikipedia --wikipedia-lang zh
+```
 
-h2m search "rust async trait"                    # pretty JSON response
-h2m search "rust async trait" --json             # NDJSON (one hit per line)
-h2m search "rust" --limit 5 --time-range week
+All the usual flags work uniformly across providers:
+
+```bash
+h2m search "rust" --limit 5 --time-range week       # last-week results
 h2m search "rust" --sources web,news --country us
-h2m search "rust" --provider brave               # switch provider
-h2m search "rust" --provider tavily --include-answer  # LLM-generated summary
+h2m search "rust" --language en --safesearch strict
+h2m search "rust" --json                             # NDJSON (one hit per line)
+```
+
+Provider-specific keys (opt-in, via env vars or flags):
+
+```bash
+export BRAVE_API_KEY=...    ; h2m search "rust" --provider brave
+export TAVILY_API_KEY=...   ; h2m search "rust" --provider tavily --include-answer
+export H2M_SEARXNG_URL=...  ; h2m search "rust" --provider searxng
 ```
 
 Tips:
 
+- **CAPTCHA handling** — when DuckDuckGo returns `"kind":"captchaDetected"`
+  or `"authFailed"`, switch to `--provider wikipedia` or a keyed provider.
+  The error JSON always carries `kind` / `provider` / `status` fields.
 - **Windows + system proxy** — if your system proxy intercepts `localhost`
   requests (Clash/V2Ray/etc), set `NO_PROXY=127.0.0.1,localhost` before
   pointing `h2m` at a self-hosted SearXNG instance.
@@ -139,6 +160,10 @@ h2m search "rust async" --scrape --gfm --readable
 h2m search "rust async" --scrape --selector article
 h2m search "rust" --scrape -j 8 --timeout 20     # parallel scrape
 ```
+
+A ready-made end-to-end smoke test lives at `scripts/live_search_e2e.ps1`
+(Windows PowerShell) — it exercises DuckDuckGo and Wikipedia across English /
+Chinese / Japanese and prints a classified summary table.
 
 ### JSON Output
 
@@ -241,15 +266,14 @@ scraper.scrape_many_streaming(&urls, |result| {
 
 ### Web Search
 
-The `h2m-search` crate exposes the same provider abstraction the CLI uses:
+The `h2m-search` crate exposes the same provider abstraction the CLI uses.
+The zero-config default is DuckDuckGo; no builder configuration required:
 
 ```rust,no_run
 use h2m_search::{SearchClient, SearchQuery};
 
-let client = SearchClient::builder()
-    .provider("searxng")
-    .searxng_url("https://searx.example.org")
-    .build()?;
+// Zero-config: uses DuckDuckGo (no API key, no env vars).
+let client = SearchClient::builder().build()?;
 
 let response = client
     .search(&SearchQuery::new("rust async").with_limit(5))

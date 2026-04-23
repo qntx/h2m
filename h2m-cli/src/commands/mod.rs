@@ -34,6 +34,11 @@ impl Command {
     /// mode (JSON object vs. plain stderr).
     pub(crate) fn report_error(&self, err: &CliError) {
         if self.wants_json_error() {
+            #[cfg(feature = "search")]
+            if let CliError::Search(search_err) = err {
+                output::emit_search_json_error(search_err);
+                return;
+            }
             output::emit_json_error(&err.to_string(), err.url());
         } else {
             eprintln!("error: {err}");

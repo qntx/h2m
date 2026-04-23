@@ -551,7 +551,7 @@ dependencies = [
 
 [[package]]
 name = "h2m"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "ego-tree",
  "pretty_assertions",
@@ -565,7 +565,7 @@ dependencies = [
 
 [[package]]
 name = "h2m-cli"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "clap",
  "h2m",
@@ -583,7 +583,7 @@ dependencies = [
 
 [[package]]
 name = "h2m-search"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "insta",
  "percent-encoding",
