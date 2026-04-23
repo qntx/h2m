@@ -5,6 +5,8 @@
 //! pick a backend at runtime.
 
 use std::env;
+use std::fmt;
+use std::str::FromStr;
 
 use crate::error::SearchError;
 use crate::query::SearchQuery;
@@ -27,6 +29,85 @@ pub const ENV_BRAVE_API_KEY: &str = "BRAVE_API_KEY";
 #[cfg(feature = "tavily")]
 pub const ENV_TAVILY_API_KEY: &str = "TAVILY_API_KEY";
 
+/// Stable identifier for a configured search provider.
+///
+/// Prefer this enum over ad-hoc strings when matching on provider identity.
+/// Implements [`FromStr`] (accepting aliases like `"ddg"` for
+/// [`ProviderId::DuckDuckGo`]) and [`fmt::Display`] yielding the canonical
+/// lowercase form (`"duckduckgo"`, `"wikipedia"`, …).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ProviderId {
+    /// `DuckDuckGo` zero-config HTML provider.
+    #[cfg(feature = "duckduckgo")]
+    DuckDuckGo,
+    /// Wikipedia `MediaWiki` Search API.
+    #[cfg(feature = "wikipedia")]
+    Wikipedia,
+    /// `SearXNG` self-hosted meta-search.
+    #[cfg(feature = "searxng")]
+    SearXNG,
+    /// Brave Search API.
+    #[cfg(feature = "brave")]
+    Brave,
+    /// Tavily AI Search API.
+    #[cfg(feature = "tavily")]
+    Tavily,
+}
+
+impl ProviderId {
+    /// Returns the canonical lowercase identifier.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            #[cfg(feature = "duckduckgo")]
+            Self::DuckDuckGo => "duckduckgo",
+            #[cfg(feature = "wikipedia")]
+            Self::Wikipedia => "wikipedia",
+            #[cfg(feature = "searxng")]
+            Self::SearXNG => "searxng",
+            #[cfg(feature = "brave")]
+            Self::Brave => "brave",
+            #[cfg(feature = "tavily")]
+            Self::Tavily => "tavily",
+        }
+    }
+}
+
+impl fmt::Display for ProviderId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl AsRef<str> for ProviderId {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl FromStr for ProviderId {
+    type Err = SearchError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            #[cfg(feature = "duckduckgo")]
+            "duckduckgo" | "ddg" => Ok(Self::DuckDuckGo),
+            #[cfg(feature = "wikipedia")]
+            "wikipedia" | "wiki" => Ok(Self::Wikipedia),
+            #[cfg(feature = "searxng")]
+            "searxng" => Ok(Self::SearXNG),
+            #[cfg(feature = "brave")]
+            "brave" => Ok(Self::Brave),
+            #[cfg(feature = "tavily")]
+            "tavily" => Ok(Self::Tavily),
+            other => Err(SearchError::ProviderUnavailable {
+                name: other.to_owned(),
+            }),
+        }
+    }
+}
+
 /// Unified, statically-dispatched search client.
 ///
 /// Variants appear only when the matching provider feature is enabled.
@@ -36,19 +117,19 @@ pub const ENV_TAVILY_API_KEY: &str = "TAVILY_API_KEY";
 pub enum SearchClient {
     /// `DuckDuckGo` zero-config HTML-scraping provider (default).
     #[cfg(feature = "duckduckgo")]
-    DuckDuckGo(crate::providers::duckduckgo::DuckDuckGo),
+    DuckDuckGo(crate::providers::DuckDuckGo),
     /// Wikipedia `MediaWiki` Search API provider.
     #[cfg(feature = "wikipedia")]
-    Wikipedia(crate::providers::wikipedia::Wikipedia),
+    Wikipedia(crate::providers::Wikipedia),
     /// `SearXNG` metasearch provider.
     #[cfg(feature = "searxng")]
-    SearXNG(crate::providers::searxng::SearXNG),
+    SearXNG(crate::providers::SearXNG),
     /// Brave Search API provider.
     #[cfg(feature = "brave")]
-    Brave(crate::providers::brave::Brave),
+    Brave(crate::providers::Brave),
     /// Tavily Search API provider.
     #[cfg(feature = "tavily")]
-    Tavily(crate::providers::tavily::Tavily),
+    Tavily(crate::providers::Tavily),
 }
 
 impl SearchClient {
@@ -95,21 +176,29 @@ impl SearchClient {
         builder.build()
     }
 
-    /// Returns the provider identifier (`"duckduckgo"`, `"wikipedia"`, …).
+    /// Returns the [`ProviderId`] of the configured backend.
     #[must_use]
-    pub const fn id(&self) -> &'static str {
+    pub const fn provider(&self) -> ProviderId {
         match self {
             #[cfg(feature = "duckduckgo")]
-            Self::DuckDuckGo(_) => "duckduckgo",
+            Self::DuckDuckGo(_) => ProviderId::DuckDuckGo,
             #[cfg(feature = "wikipedia")]
-            Self::Wikipedia(_) => "wikipedia",
+            Self::Wikipedia(_) => ProviderId::Wikipedia,
             #[cfg(feature = "searxng")]
-            Self::SearXNG(_) => "searxng",
+            Self::SearXNG(_) => ProviderId::SearXNG,
             #[cfg(feature = "brave")]
-            Self::Brave(_) => "brave",
+            Self::Brave(_) => ProviderId::Brave,
             #[cfg(feature = "tavily")]
-            Self::Tavily(_) => "tavily",
+            Self::Tavily(_) => ProviderId::Tavily,
         }
+    }
+
+    /// Returns the canonical lowercase provider identifier.
+    ///
+    /// Equivalent to `self.provider().as_str()`.
+    #[must_use]
+    pub const fn id(&self) -> &'static str {
+        self.provider().as_str()
     }
 
     /// Executes a search.
@@ -152,6 +241,24 @@ pub struct SearchClientBuilder {
     wikipedia_language: Option<String>,
     http: Option<crate::http::HttpConfig>,
     retry: Option<crate::retry::RetryPolicy>,
+}
+
+/// Applies the shared `http` / `retry` overrides to a provider builder.
+///
+/// Every provider builder exposes identically-named `.http(HttpConfig)` and
+/// `.retry(RetryPolicy)` setters, so a single macro expansion covers all of
+/// them without introducing a trait abstraction or runtime indirection.
+macro_rules! apply_overrides {
+    ($builder:expr, $http:expr, $retry:expr $(,)?) => {{
+        let mut chain = $builder;
+        if let Some(http) = $http {
+            chain = chain.http(http);
+        }
+        if let Some(retry) = $retry {
+            chain = chain.retry(retry);
+        }
+        chain
+    }};
 }
 
 impl SearchClientBuilder {
@@ -234,90 +341,84 @@ impl SearchClientBuilder {
             .provider
             .clone()
             .or_else(|| env::var(ENV_PROVIDER).ok())
-            .unwrap_or_else(|| default_provider().into());
-
-        match name.trim().to_ascii_lowercase().as_str() {
+            .unwrap_or_else(|| default_provider().to_owned());
+        let id = name.parse::<ProviderId>()?;
+        match id {
             #[cfg(feature = "duckduckgo")]
-            "duckduckgo" | "ddg" => {
-                let mut b = crate::providers::duckduckgo::DuckDuckGo::builder();
-                if let Some(http) = self.http {
-                    b = b.http(http);
-                }
-                if let Some(retry) = self.retry {
-                    b = b.retry(retry);
-                }
-                Ok(SearchClient::DuckDuckGo(b.build()?))
-            }
+            ProviderId::DuckDuckGo => self.build_duckduckgo(),
             #[cfg(feature = "wikipedia")]
-            "wikipedia" | "wiki" => {
-                let mut b = crate::providers::wikipedia::Wikipedia::builder();
-                if let Some(lang) = self.wikipedia_language {
-                    b = b.language(lang);
-                }
-                if let Some(http) = self.http {
-                    b = b.http(http);
-                }
-                if let Some(retry) = self.retry {
-                    b = b.retry(retry);
-                }
-                Ok(SearchClient::Wikipedia(b.build()?))
-            }
+            ProviderId::Wikipedia => self.build_wikipedia(),
             #[cfg(feature = "searxng")]
-            "searxng" => {
-                let url = self
-                    .searxng_url
-                    .or_else(|| env::var(ENV_SEARXNG_URL).ok())
-                    .ok_or(SearchError::MissingSearxngUrl)?;
-                let mut b = crate::providers::searxng::SearXNG::builder(url);
-                if let Some(http) = self.http {
-                    b = b.http(http);
-                }
-                if let Some(retry) = self.retry {
-                    b = b.retry(retry);
-                }
-                Ok(SearchClient::SearXNG(b.build()?))
-            }
+            ProviderId::SearXNG => self.build_searxng(),
             #[cfg(feature = "brave")]
-            "brave" => {
-                let key = self
-                    .brave_api_key
-                    .or_else(|| env::var(ENV_BRAVE_API_KEY).ok().map(SecretString::new))
-                    .ok_or(SearchError::MissingApiKey {
-                        provider: "brave",
-                        env_var: ENV_BRAVE_API_KEY,
-                    })?;
-                let mut b = crate::providers::brave::Brave::builder(key);
-                if let Some(http) = self.http {
-                    b = b.http(http);
-                }
-                if let Some(retry) = self.retry {
-                    b = b.retry(retry);
-                }
-                Ok(SearchClient::Brave(b.build()?))
-            }
+            ProviderId::Brave => self.build_brave(),
             #[cfg(feature = "tavily")]
-            "tavily" => {
-                let key = self
-                    .tavily_api_key
-                    .or_else(|| env::var(ENV_TAVILY_API_KEY).ok().map(SecretString::new))
-                    .ok_or(SearchError::MissingApiKey {
-                        provider: "tavily",
-                        env_var: ENV_TAVILY_API_KEY,
-                    })?;
-                let mut b = crate::providers::tavily::Tavily::builder(key)
-                    .include_answer(self.tavily_include_answer);
-                if let Some(http) = self.http {
-                    b = b.http(http);
-                }
-                if let Some(retry) = self.retry {
-                    b = b.retry(retry);
-                }
-                Ok(SearchClient::Tavily(b.build()?))
-            }
-            other => Err(SearchError::ProviderUnavailable {
-                name: other.to_owned(),
-            }),
+            ProviderId::Tavily => self.build_tavily(),
         }
+    }
+
+    #[cfg(feature = "duckduckgo")]
+    fn build_duckduckgo(self) -> Result<SearchClient, SearchError> {
+        let inner = apply_overrides!(
+            crate::providers::DuckDuckGo::builder(),
+            self.http,
+            self.retry
+        );
+        Ok(SearchClient::DuckDuckGo(inner.build()?))
+    }
+
+    #[cfg(feature = "wikipedia")]
+    fn build_wikipedia(self) -> Result<SearchClient, SearchError> {
+        let mut inner = crate::providers::Wikipedia::builder();
+        if let Some(lang) = self.wikipedia_language {
+            inner = inner.language(lang);
+        }
+        let inner = apply_overrides!(inner, self.http, self.retry);
+        Ok(SearchClient::Wikipedia(inner.build()?))
+    }
+
+    #[cfg(feature = "searxng")]
+    fn build_searxng(self) -> Result<SearchClient, SearchError> {
+        let url = self
+            .searxng_url
+            .or_else(|| env::var(ENV_SEARXNG_URL).ok())
+            .ok_or(SearchError::MissingSearxngUrl)?;
+        let inner = apply_overrides!(
+            crate::providers::SearXNG::builder(url),
+            self.http,
+            self.retry
+        );
+        Ok(SearchClient::SearXNG(inner.build()?))
+    }
+
+    #[cfg(feature = "brave")]
+    fn build_brave(self) -> Result<SearchClient, SearchError> {
+        let key = self
+            .brave_api_key
+            .or_else(|| env::var(ENV_BRAVE_API_KEY).ok().map(SecretString::new))
+            .ok_or(SearchError::MissingApiKey {
+                provider: "brave",
+                env_var: ENV_BRAVE_API_KEY,
+            })?;
+        let inner = apply_overrides!(crate::providers::Brave::builder(key), self.http, self.retry);
+        Ok(SearchClient::Brave(inner.build()?))
+    }
+
+    #[cfg(feature = "tavily")]
+    fn build_tavily(self) -> Result<SearchClient, SearchError> {
+        let key = self
+            .tavily_api_key
+            .or_else(|| env::var(ENV_TAVILY_API_KEY).ok().map(SecretString::new))
+            .ok_or(SearchError::MissingApiKey {
+                provider: "tavily",
+                env_var: ENV_TAVILY_API_KEY,
+            })?;
+        let inner = apply_overrides!(
+            crate::providers::Tavily::builder(key).include_answer(self.tavily_include_answer),
+            self.http,
+            self.retry
+        );
+        Ok(SearchClient::Tavily(inner.build()?))
     }
 }
 

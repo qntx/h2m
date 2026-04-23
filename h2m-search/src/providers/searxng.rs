@@ -192,14 +192,10 @@ impl SearXNGBuilder {
         let base_url = url::Url::parse(&self.base_url).map_err(|e| SearchError::Config {
             message: format!("invalid SearXNG base URL: {e}"),
         })?;
-        let http = match self.http {
-            Some(cfg) => cfg,
-            None => HttpConfig::new()?,
-        };
         Ok(SearXNG {
-            http,
+            http: super::common::resolve_http(self.http)?,
             base_url,
-            retry_policy: self.retry.unwrap_or_default(),
+            retry_policy: super::common::resolve_retry(self.retry),
         })
     }
 }

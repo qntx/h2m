@@ -14,23 +14,27 @@ categories = ["command-line-utilities"]
 readme = "README.md"
 
 [workspace.dependencies]
+# Internal crates (path-linked, kept separate for visual grouping).
 h2m = { version = "0.7", path = "h2m" }
 h2m-search = { version = "0.7", path = "h2m-search" }
 
-scraper = "0.26"
+# Runtime dependencies, alphabetised.
+clap = { version = "4", features = ["derive"] }
 ego-tree = "0.11"
 percent-encoding = "2"
-thiserror = "2"
-clap = { version = "4", features = ["derive"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "query"] }
+scraper = "0.26"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 url = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-pretty_assertions = "1"
+
+# dev-dependencies used across workspace tests.
 insta = { version = "1", features = ["json", "yaml"] }
+pretty_assertions = "1"
 wiremock = "0.6"
 
 [profile.release]

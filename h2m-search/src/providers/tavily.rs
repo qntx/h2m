@@ -20,7 +20,7 @@ use crate::secret::SecretString;
 
 const PROVIDER_ID: &str = "tavily";
 /// Canonical Tavily API root URL.
-pub const DEFAULT_BASE_URL: &str = "https://api.tavily.com";
+const DEFAULT_BASE_URL: &str = "https://api.tavily.com";
 const SEARCH_PATH: &str = "search";
 /// Tavily caps `max_results` at 20 per request.
 const MAX_RESULTS: usize = 20;
@@ -254,15 +254,11 @@ impl TavilyBuilder {
         let base_url = url::Url::parse(&self.base_url).map_err(|e| SearchError::Config {
             message: format!("invalid Tavily base URL: {e}"),
         })?;
-        let http = match self.http {
-            Some(cfg) => cfg,
-            None => HttpConfig::new()?,
-        };
         Ok(Tavily {
-            http,
+            http: super::common::resolve_http(self.http)?,
             base_url,
             api_key: self.api_key,
-            retry_policy: self.retry.unwrap_or_default(),
+            retry_policy: super::common::resolve_retry(self.retry),
             topic_override: self.topic,
             include_answer: self.include_answer,
         })

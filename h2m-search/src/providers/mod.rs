@@ -4,19 +4,22 @@
 //! opt into only the backends they need. All providers share the same public
 //! contract: `async fn search(&self, &SearchQuery) -> Result<SearchResponse,
 //! SearchError>`.
+//!
+//! Provider types are re-exported at the crate root; consumers should depend
+//! on those re-exports rather than reaching through the module path.
 
-mod common;
+pub(crate) mod common;
 
 #[cfg(feature = "brave")]
-pub mod brave;
+mod brave;
 #[cfg(feature = "duckduckgo")]
-pub mod duckduckgo;
+mod duckduckgo;
 #[cfg(feature = "searxng")]
-pub mod searxng;
+mod searxng;
 #[cfg(feature = "tavily")]
-pub mod tavily;
+mod tavily;
 #[cfg(feature = "wikipedia")]
-pub mod wikipedia;
+mod wikipedia;
 
 #[cfg(feature = "brave")]
 pub use brave::Brave;

@@ -59,12 +59,11 @@ compile_error!(
 mod client;
 mod error;
 mod http;
+mod providers;
 mod query;
 mod response;
 mod retry;
 mod secret;
-
-pub mod providers;
 
 #[cfg(feature = "brave")]
 pub use client::ENV_BRAVE_API_KEY;
@@ -72,13 +71,23 @@ pub use client::ENV_BRAVE_API_KEY;
 pub use client::ENV_SEARXNG_URL;
 #[cfg(feature = "tavily")]
 pub use client::ENV_TAVILY_API_KEY;
-pub use client::{ENV_PROVIDER, SearchClient, SearchClientBuilder};
+pub use client::{ENV_PROVIDER, ProviderId, SearchClient, SearchClientBuilder};
 pub use error::SearchError;
 pub use http::{DEFAULT_TIMEOUT, HttpConfig, USER_AGENT};
 #[cfg(test)]
 use insta as _;
 #[cfg(test)]
 use pretty_assertions as _;
+#[cfg(feature = "brave")]
+pub use providers::Brave;
+#[cfg(feature = "duckduckgo")]
+pub use providers::DuckDuckGo;
+#[cfg(feature = "searxng")]
+pub use providers::SearXNG;
+#[cfg(feature = "tavily")]
+pub use providers::Tavily;
+#[cfg(feature = "wikipedia")]
+pub use providers::Wikipedia;
 pub use query::{SafeSearch, SearchQuery, SearchSource, TimeRange};
 pub use response::{SearchHit, SearchResponse};
 pub use retry::RetryPolicy;

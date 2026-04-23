@@ -199,14 +199,10 @@ impl WikipediaBuilder {
     /// Returns [`SearchError::Config`] if the default HTTP client cannot be
     /// constructed.
     pub fn build(self) -> Result<Wikipedia, SearchError> {
-        let http = match self.http {
-            Some(cfg) => cfg,
-            None => HttpConfig::new()?,
-        };
         Ok(Wikipedia {
-            http,
+            http: super::common::resolve_http(self.http)?,
             language: self.language.unwrap_or_else(|| DEFAULT_LANGUAGE.into()),
-            retry_policy: self.retry.unwrap_or_default(),
+            retry_policy: super::common::resolve_retry(self.retry),
         })
     }
 }

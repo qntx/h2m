@@ -25,7 +25,7 @@ use crate::secret::SecretString;
 
 const PROVIDER_ID: &str = "brave";
 /// Canonical Brave Search API root URL.
-pub const DEFAULT_BASE_URL: &str = "https://api.search.brave.com";
+const DEFAULT_BASE_URL: &str = "https://api.search.brave.com";
 const SEARCH_PATH: &str = "res/v1/web/search";
 /// Brave caps `count` at 20 per documentation.
 const MAX_COUNT: usize = 20;
@@ -87,8 +87,8 @@ impl Brave {
 
     /// Executes a search against the Brave API.
     ///
-    /// Transparently paginates via `offset` up to [`MAX_OFFSET`] to satisfy
-    /// [`SearchQuery::limit`] (hard ceiling of 200 results). Each page
+    /// Transparently paginates via `offset` up to Brave's internal cap of 9
+    /// (10 pages / 200 results) to satisfy [`SearchQuery::limit`]. Each page
     /// request honours retries on 429/5xx responses.
     ///
     /// # Errors
@@ -238,15 +238,11 @@ impl BraveBuilder {
         let base_url = url::Url::parse(&self.base_url).map_err(|e| SearchError::Config {
             message: format!("invalid Brave base URL: {e}"),
         })?;
-        let http = match self.http {
-            Some(cfg) => cfg,
-            None => HttpConfig::new()?,
-        };
         Ok(Brave {
-            http,
+            http: super::common::resolve_http(self.http)?,
             base_url,
             api_key: self.api_key,
-            retry_policy: self.retry.unwrap_or_default(),
+            retry_policy: super::common::resolve_retry(self.retry),
         })
     }
 }

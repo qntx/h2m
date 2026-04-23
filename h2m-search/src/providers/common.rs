@@ -10,6 +10,28 @@ use reqwest::Response;
 use reqwest::StatusCode;
 
 use crate::error::SearchError;
+use crate::http::HttpConfig;
+use crate::retry::RetryPolicy;
+
+/// Resolves an optional [`HttpConfig`] to a concrete one.
+///
+/// Provider builders call this so each `build()` avoids repeating the
+/// `Some(cfg) | None => HttpConfig::new()?` dance.
+///
+/// # Errors
+///
+/// Propagates [`SearchError::Config`] from the default [`HttpConfig::new`]
+/// when no override is supplied and the reqwest client cannot be constructed.
+pub(crate) fn resolve_http(opt: Option<HttpConfig>) -> Result<HttpConfig, SearchError> {
+    opt.map_or_else(HttpConfig::new, Ok)
+}
+
+/// Resolves an optional [`RetryPolicy`] to the provider-wide default when
+/// none is supplied.
+#[must_use]
+pub(crate) fn resolve_retry(opt: Option<RetryPolicy>) -> RetryPolicy {
+    opt.unwrap_or_default()
+}
 
 /// Classifies a non-success HTTP response into the appropriate
 /// [`SearchError`] variant.

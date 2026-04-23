@@ -18,6 +18,10 @@
 // silence the `unused-crate-dependencies` lint by declaring them explicitly.
 use std::time::Duration;
 
+#[cfg(feature = "brave")]
+use h2m_search::Brave;
+#[cfg(feature = "searxng")]
+use h2m_search::SearXNG;
 use h2m_search::{HttpConfig, RetryPolicy, SearchClient, SearchError, SearchQuery, SecretString};
 use insta as _;
 #[cfg(any(feature = "duckduckgo", feature = "wikipedia"))]
@@ -138,7 +142,7 @@ async fn brave_auth_failure_short_circuits_retries() {
     // Trick the client into hitting our mock: re-wire by using the Brave
     // provider directly through the builder. (For this test we use
     // Brave::with_base_url to bypass the canonical URL.)
-    let provider = h2m_search::providers::brave::Brave::builder("KEY")
+    let provider = Brave::builder("KEY")
         .base_url(server.uri())
         .retry(RetryPolicy {
             max_retries: 3,
@@ -169,7 +173,7 @@ async fn rate_limited_with_retry_after_is_exposed() {
         .mount(&server)
         .await;
 
-    let provider = h2m_search::providers::searxng::SearXNG::builder(server.uri())
+    let provider = SearXNG::builder(server.uri())
         .retry(RetryPolicy::NONE)
         .build()
         .unwrap();
@@ -211,11 +215,11 @@ async fn shared_http_config_works_across_providers() {
         .await;
 
     let http = HttpConfig::new().unwrap();
-    let searxng = h2m_search::providers::searxng::SearXNG::builder(searxng_server.uri())
+    let searxng = SearXNG::builder(searxng_server.uri())
         .http(http.clone())
         .build()
         .unwrap();
-    let brave = h2m_search::providers::brave::Brave::builder("KEY")
+    let brave = Brave::builder("KEY")
         .base_url(brave_server.uri())
         .http(http)
         .build()
