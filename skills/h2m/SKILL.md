@@ -23,13 +23,13 @@ description: >-
 **macOS / Linux:**
 
 ```sh
-curl -fsSL https://sh.qntx.fun/labs/h2m | sh
+curl -fsSL https://sh.qntx.org/labs/h2m | sh
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-irm https://sh.qntx.fun/labs/h2m/ps | iex
+irm https://sh.qntx.org/labs/h2m/ps | iex
 ```
 
 These scripts download the latest pre-built binary from GitHub Releases and add it to PATH. No Rust toolchain required.
